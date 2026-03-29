@@ -23,8 +23,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const MAX_PANELS = 6;
 const PANEL_MAX_WIDTH = 1400;
-const DEBUG_WINDOW_WIDTH = 340;
-const DEBUG_WINDOW_HEIGHT = 400;
+const DEBUG_WINDOW_WIDTH = 400;
+const DEBUG_WINDOW_HEIGHT = 480;
 
 // ============================================================================
 // TYPES
@@ -39,6 +39,7 @@ interface TerminalPaneDescriptor {
   id: string;
   terminalId: string | null;
   profile: "shell" | "claude";
+  initialCommand?: string;
 }
 
 interface VoiceDebugEntry {
@@ -68,6 +69,36 @@ export default function DesktopPage() {
   const nextEntryId = useRef(0);
 
   // Connect to /ws/voice to receive VoiceEvents (transcripts, tool calls, errors)
+  // Also used bidirectionally to send simulated text input
+  const voiceWsRef = useRef<WebSocket | null>(null);
+
+  const handleToolCallEvent = useCallback(async (tool: string, params: Record<string, unknown>) => {
+    if (tool === "open_browser" && typeof params.url === "string") {
+      const url = params.url;
+      setPanels((prev) => {
+        if (prev.length >= MAX_PANELS) return prev;
+        return [...prev, { id: generateId(), url }];
+      });
+    } else if (tool === "open_terminal") {
+      const cwd = typeof params.cwd === "string" ? params.cwd : "";
+      const command = typeof params.command === "string" ? params.command : undefined;
+      const paneId = generateId();
+
+      const res = await fetch("/api/terminals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile: "shell", cwd: cwd || undefined }),
+      });
+      if (!res.ok) {
+        console.error(`[tool] Failed to create terminal: ${res.status}`);
+        return;
+      }
+      const { id: terminalId } = (await res.json()) as { id: string };
+
+      setTerminalPanes((prev) => [...prev, { id: paneId, terminalId, profile: "shell", initialCommand: command }]);
+    }
+  }, []);
+
   useEffect(() => {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${proto}//${window.location.host}/ws/voice`;
@@ -78,6 +109,10 @@ export default function DesktopPage() {
     function connect() {
       if (disposed) return;
       ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        voiceWsRef.current = ws;
+      };
 
       ws.onmessage = (ev) => {
         try {
@@ -93,6 +128,7 @@ export default function DesktopPage() {
             text = event.text;
           } else if (event.type === "tool_call") {
             text = `${event.tool}(${JSON.stringify(event.params)})`;
+            handleToolCallEvent(event.tool, event.params);
           } else if (event.type === "llm_response") {
             text = event.raw;
           } else if (event.type === "error") {
@@ -112,6 +148,7 @@ export default function DesktopPage() {
       };
 
       ws.onclose = () => {
+        voiceWsRef.current = null;
         ws = null;
         if (!disposed) {
           reconnectTimer = setTimeout(connect, 2000);
@@ -127,8 +164,9 @@ export default function DesktopPage() {
       disposed = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       ws?.close();
+      voiceWsRef.current = null;
     };
-  }, []);
+  }, [handleToolCallEvent]);
 
   // Connect to /ws/audio as a consumer to receive live RMS levels
   useEffect(() => {
@@ -172,6 +210,13 @@ export default function DesktopPage() {
 
   const clearDebugEntries = useCallback(() => {
     setDebugEntries([]);
+  }, []);
+
+  const sendSimulatedText = useCallback((text: string) => {
+    const ws = voiceWsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "simulate", text }));
+    }
   }, []);
 
   const addPanel = useCallback(() => {
@@ -253,7 +298,7 @@ export default function DesktopPage() {
         ))}
       </div>
 
-      <VoiceDebugWindow entries={debugEntries} onClear={clearDebugEntries} audioLevel={audioLevel} interim={interimText} />
+      <VoiceDebugWindow entries={debugEntries} onClear={clearDebugEntries} audioLevel={audioLevel} interim={interimText} onSend={sendSimulatedText} />
       <AudioMeter level={audioLevel} />
     </div>
   );
@@ -386,7 +431,7 @@ const TerminalPane = ({
           x
         </button>
       </div>
-      <TerminalXterm terminalId={pane.terminalId} />
+      <TerminalXterm terminalId={pane.terminalId} initialCommand={pane.initialCommand} />
     </div>
   );
 };
@@ -426,7 +471,7 @@ function TerminalPathEntry({
   );
 }
 
-const TerminalXterm = ({ terminalId }: { terminalId: string }) => {
+const TerminalXterm = ({ terminalId, initialCommand }: { terminalId: string; initialCommand?: string }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -503,6 +548,11 @@ const TerminalXterm = ({ terminalId }: { terminalId: string }) => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ cols: terminal.cols, rows: terminal.rows }),
         });
+        if (initialCommand) {
+          setTimeout(() => {
+            ws.send(initialCommand + "\r");
+          }, 300);
+        }
       };
 
       ws.onmessage = (event) => {
@@ -561,16 +611,20 @@ const TerminalXterm = ({ terminalId }: { terminalId: string }) => {
 // VOICE DEBUG WINDOW
 // ============================================================================
 
+type DebugTab = "log" | "input";
+
 function VoiceDebugWindow({
   entries,
   onClear,
   audioLevel,
   interim,
+  onSend,
 }: {
   entries: VoiceDebugEntry[];
   onClear: () => void;
   audioLevel: number;
   interim: string;
+  onSend: (text: string) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(
@@ -578,15 +632,19 @@ function VoiceDebugWindow({
   );
   const [position, setPosition] = useState({ x: 16, y: 80 });
   const [minimized, setMinimized] = useState(false);
+  const [activeTab, setActiveTab] = useState<DebugTab>("log");
+  const [inputText, setInputText] = useState("");
 
   const prevLength = useRef(entries.length);
   if (entries.length !== prevLength.current) {
     prevLength.current = entries.length;
-    setTimeout(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }
-    }, 0);
+    if (activeTab === "log") {
+      setTimeout(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      }, 0);
+    }
   }
 
   const handleDragStart = (e: MouseEvent) => {
@@ -614,6 +672,13 @@ function VoiceDebugWindow({
 
     document.addEventListener("mousemove", handleMove);
     document.addEventListener("mouseup", handleUp);
+  };
+
+  const handleSend = () => {
+    if (inputText.trim()) {
+      onSend(inputText.trim());
+      setInputText("");
+    }
   };
 
   const formatTime = (ts: number): string => {
@@ -652,7 +717,7 @@ function VoiceDebugWindow({
       <div className="voice-debug-titlebar" onMouseDown={handleDragStart}>
         <span className="voice-debug-title">Voice Debug</span>
         <div className="voice-debug-controls">
-          <button type="button" onClick={onClear} title="Clear">
+          <button type="button" onClick={onClear} title="Clear log">
             C
           </button>
           <button
@@ -665,35 +730,90 @@ function VoiceDebugWindow({
         </div>
       </div>
       {!minimized && (
-        <div className="voice-debug-body" ref={scrollRef}>
-          <div className="voice-debug-meter">
-            <span className="voice-debug-meter-label">MIC</span>
-            <div className="voice-debug-meter-track">
+        <>
+          <div className="voice-debug-tabs">
+            <button
+              type="button"
+              className={`voice-debug-tab ${activeTab === "input" ? "voice-debug-tab--active" : ""}`}
+              onClick={() => setActiveTab("input")}
+            >
+              Input
+            </button>
+            <button
+              type="button"
+              className={`voice-debug-tab ${activeTab === "log" ? "voice-debug-tab--active" : ""}`}
+              onClick={() => setActiveTab("log")}
+            >
+              Log{entries.length > 0 ? ` (${entries.length})` : ""}
+            </button>
+            <div className="voice-debug-tabs-meter">
               <div
-                className="voice-debug-meter-fill"
-                style={{ width: `${Math.min(audioLevel * 100, 100)}%` }}
+                className="voice-debug-tabs-meter-dot"
+                style={{ opacity: Math.min(audioLevel * 5, 1) }}
               />
             </div>
-            <span className="voice-debug-meter-value">{(audioLevel * 100).toFixed(0)}%</span>
           </div>
-          {entries.length === 0 && (
-            <div className="voice-debug-empty">No voice events yet</div>
-          )}
-          {entries.map((entry) => (
-            <div key={entry.id} className={`debug-entry ${typeClass(entry.type)}`}>
-              <span className="debug-entry-time">{formatTime(entry.timestamp)}</span>
-              <span className="debug-entry-label">{typeLabel(entry.type)}</span>
-              <span className="debug-entry-text">{entry.text}</span>
+
+          {activeTab === "log" && (
+            <div className="voice-debug-body" ref={scrollRef}>
+              <div className="voice-debug-meter">
+                <span className="voice-debug-meter-label">MIC</span>
+                <div className="voice-debug-meter-track">
+                  <div
+                    className="voice-debug-meter-fill"
+                    style={{ width: `${Math.min(audioLevel * 100, 100)}%` }}
+                  />
+                </div>
+                <span className="voice-debug-meter-value">{(audioLevel * 100).toFixed(0)}%</span>
+              </div>
+              {entries.length === 0 && (
+                <div className="voice-debug-empty">No voice events yet</div>
+              )}
+              {entries.map((entry) => (
+                <div key={entry.id} className={`debug-entry ${typeClass(entry.type)}`}>
+                  <span className="debug-entry-time">{formatTime(entry.timestamp)}</span>
+                  <span className="debug-entry-label">{typeLabel(entry.type)}</span>
+                  <span className="debug-entry-text">{entry.text}</span>
+                </div>
+              ))}
+              {interim && (
+                <div className="debug-entry debug-entry--interim">
+                  <span className="debug-entry-time">{formatTime(Date.now())}</span>
+                  <span className="debug-entry-label">...</span>
+                  <span className="debug-entry-text">{interim}</span>
+                </div>
+              )}
             </div>
-          ))}
-          {interim && (
-            <div className="debug-entry debug-entry--interim">
-              <span className="debug-entry-time">{formatTime(Date.now())}</span>
-              <span className="debug-entry-label">...</span>
-              <span className="debug-entry-text">{interim}</span>
+          )}
+
+          {activeTab === "input" && (
+            <div className="voice-debug-input-tab">
+              <textarea
+                className="voice-debug-textarea"
+                placeholder="Type a command to simulate voice input…&#10;&#10;Examples:&#10;  Open a browser to google.com&#10;  Open a terminal&#10;  Start a session to build a login page"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+              />
+              <div className="voice-debug-input-footer">
+                <span className="voice-debug-input-hint">Enter to send · Shift+Enter for newline</span>
+                <button
+                  type="button"
+                  className="voice-debug-send-btn"
+                  onClick={handleSend}
+                  disabled={!inputText.trim()}
+                >
+                  Send
+                </button>
+              </div>
             </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );

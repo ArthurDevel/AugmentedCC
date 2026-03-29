@@ -58,6 +58,15 @@ export class VoicePipeline {
   }
 
   /**
+   * Processes a text string as if it were a final voice transcript.
+   * Skips Deepgram STT entirely — useful for debugging via typed input.
+   * @param text - the simulated transcript text
+   */
+  async processText(text: string): Promise<void> {
+    await this.handleTranscript(text, true);
+  }
+
+  /**
    * Feeds raw PCM audio into the pipeline.
    * Lazily connects to Deepgram on the first call.
    * @param audio - Buffer of linear16 PCM audio at 16kHz mono
