@@ -13,15 +13,14 @@
  */
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
-import type { MouseEvent } from "react";
 import "@xterm/xterm/css/xterm.css";
+import type { MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
-const DEFAULT_URL = "https://google.com";
 const MAX_PANELS = 6;
 const PANEL_MAX_WIDTH = 1400;
 const DEBUG_WINDOW_WIDTH = 340;
@@ -33,7 +32,7 @@ const DEBUG_WINDOW_HEIGHT = 400;
 
 interface Panel {
   id: string;
-  url: string;
+  url: string | null;
 }
 
 interface TerminalPaneDescriptor {
@@ -75,7 +74,7 @@ export default function DesktopPage() {
   const addPanel = useCallback(() => {
     setPanels((prev) => {
       if (prev.length >= MAX_PANELS) return prev;
-      return [...prev, { id: generateId(), url: DEFAULT_URL }];
+      return [...prev, { id: generateId(), url: null }];
     });
   }, []);
 
@@ -85,6 +84,10 @@ export default function DesktopPage() {
 
   const removeById = useCallback((id: string) => {
     setPanels((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  const setPanelUrl = useCallback((id: string, url: string) => {
+    setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, url } : p)));
   }, []);
 
   const addShell = useCallback(async () => {
@@ -116,10 +119,12 @@ export default function DesktopPage() {
 
       <div className="panels-container">
         {totalCount === 0 && (
-          <div className="empty-state">Click &quot;+ Add Panel&quot; or &quot;+ Shell&quot; to get started</div>
+          <div className="empty-state">
+            Click &quot;+ Add Panel&quot; or &quot;+ Shell&quot; to get started
+          </div>
         )}
         {panels.map((panel) => (
-          <IframePanel key={panel.id} panel={panel} onRemove={removeById} />
+          <IframePanel key={panel.id} panel={panel} onRemove={removeById} onSetUrl={setPanelUrl} />
         ))}
         {terminalPanes.map((pane) => (
           <TerminalPane
@@ -159,10 +164,10 @@ function Toolbar({
       <button onClick={onRemoveLast} disabled={panelCount === 0}>
         - Remove Panel
       </button>
-      <button onClick={onAddShell}>
-        + Shell
-      </button>
-      <span className="panel-count">{panelCount} / {MAX_PANELS}</span>
+      <button onClick={onAddShell}>+ Shell</button>
+      <span className="panel-count">
+        {panelCount} / {MAX_PANELS}
+      </span>
     </div>
   );
 }
@@ -174,19 +179,51 @@ function Toolbar({
 function IframePanel({
   panel,
   onRemove,
+  onSetUrl,
 }: {
   panel: Panel;
   onRemove: (id: string) => void;
+  onSetUrl: (id: string, url: string) => void;
 }) {
+  const [urlInput, setUrlInput] = useState("");
+
+  const handleSubmit = () => {
+    const trimmed = urlInput.trim();
+    if (!trimmed) return;
+    const normalized = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    onSetUrl(panel.id, normalized);
+  };
+
   return (
     <div className="iframe-panel" style={{ maxWidth: PANEL_MAX_WIDTH }}>
       <div className="panel-header">
-        <span className="panel-url">{panel.url}</span>
+        <span className="panel-url">{panel.url ?? "New Panel"}</span>
         <button className="panel-close" onClick={() => onRemove(panel.id)}>
           x
         </button>
       </div>
-      <iframe src={panel.url} className="panel-iframe" title={panel.url} />
+      {panel.url ? (
+        <iframe src={panel.url} className="panel-iframe" title={panel.url} />
+      ) : (
+        <div className="panel-url-entry">
+          <div className="panel-url-row">
+            <input
+              type="text"
+              className="panel-url-input"
+              placeholder="Enter URL…"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSubmit();
+              }}
+              autoFocus
+            />
+            <button className="panel-url-go" onClick={handleSubmit}>
+              Go
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -195,13 +232,7 @@ function IframePanel({
 // TERMINAL PANE
 // ============================================================================
 
-const TerminalPane = ({
-  pane,
-  onClose,
-}: {
-  pane: TerminalPaneDescriptor;
-  onClose: () => void;
-}) => {
+const TerminalPane = ({ pane, onClose }: { pane: TerminalPaneDescriptor; onClose: () => void }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -282,7 +313,9 @@ const TerminalPane = ({
       };
 
       ws.onmessage = (event) => {
-        terminal.write(typeof event.data === "string" ? event.data : new Uint8Array(event.data as ArrayBuffer));
+        terminal.write(
+          typeof event.data === "string" ? event.data : new Uint8Array(event.data as ArrayBuffer),
+        );
       };
 
       ws.onclose = () => {
@@ -357,7 +390,9 @@ function VoiceDebugWindow({
   onClear: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(
+    null,
+  );
   const [position, setPosition] = useState({ x: 16, y: 80 });
   const [minimized, setMinimized] = useState(false);
 
@@ -373,7 +408,12 @@ function VoiceDebugWindow({
 
   const handleDragStart = (e: MouseEvent) => {
     e.preventDefault();
-    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: position.x, origY: position.y };
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: position.x,
+      origY: position.y,
+    };
 
     const handleMove = (ev: globalThis.MouseEvent) => {
       if (!dragRef.current) return;
@@ -400,17 +440,23 @@ function VoiceDebugWindow({
 
   const typeClass = (type: VoiceDebugEntry["type"]): string => {
     switch (type) {
-      case "transcript": return "debug-entry--transcript";
-      case "tool_call": return "debug-entry--tool";
-      case "error": return "debug-entry--error";
+      case "transcript":
+        return "debug-entry--transcript";
+      case "tool_call":
+        return "debug-entry--tool";
+      case "error":
+        return "debug-entry--error";
     }
   };
 
   const typeLabel = (type: VoiceDebugEntry["type"]): string => {
     switch (type) {
-      case "transcript": return "STT";
-      case "tool_call": return "CMD";
-      case "error": return "ERR";
+      case "transcript":
+        return "STT";
+      case "tool_call":
+        return "CMD";
+      case "error":
+        return "ERR";
     }
   };
 
@@ -427,17 +473,21 @@ function VoiceDebugWindow({
       <div className="voice-debug-titlebar" onMouseDown={handleDragStart}>
         <span className="voice-debug-title">Voice Debug</span>
         <div className="voice-debug-controls">
-          <button type="button" onClick={onClear} title="Clear">C</button>
-          <button type="button" onClick={() => setMinimized(!minimized)} title={minimized ? "Expand" : "Minimize"}>
+          <button type="button" onClick={onClear} title="Clear">
+            C
+          </button>
+          <button
+            type="button"
+            onClick={() => setMinimized(!minimized)}
+            title={minimized ? "Expand" : "Minimize"}
+          >
             {minimized ? "+" : "-"}
           </button>
         </div>
       </div>
       {!minimized && (
         <div className="voice-debug-body" ref={scrollRef}>
-          {entries.length === 0 && (
-            <div className="voice-debug-empty">No voice events yet</div>
-          )}
+          {entries.length === 0 && <div className="voice-debug-empty">No voice events yet</div>}
           {entries.map((entry) => (
             <div key={entry.id} className={`debug-entry ${typeClass(entry.type)}`}>
               <span className="debug-entry-time">{formatTime(entry.timestamp)}</span>
@@ -460,10 +510,7 @@ function AudioMeter({ level }: { level: number }) {
     <div className="audio-meter">
       <div className="audio-meter-label">MIC</div>
       <div className="audio-meter-track">
-        <div
-          className="audio-meter-fill"
-          style={{ width: `${Math.min(level * 100, 100)}%` }}
-        />
+        <div className="audio-meter-fill" style={{ width: `${Math.min(level * 100, 100)}%` }} />
       </div>
     </div>
   );
