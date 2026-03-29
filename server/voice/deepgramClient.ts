@@ -2,7 +2,7 @@
  * Deepgram Flux streaming speech-to-text client.
  *
  * Uses @deepgram/sdk v5 listen.v2 (Flux) for turn-based transcription.
- * - Connects via SDK's listen.v2.createConnection()
+ * - Connects via SDK's listen.v2.connect()
  * - Accepts raw PCM audio chunks via sendAudio()
  * - Emits transcripts based on Flux turn events
  * - Auto-reconnects on disconnect
@@ -75,12 +75,13 @@ export class DeepgramClient {
     this.connecting = true;
 
     try {
-      const socket = await this.dgClient.listen.v2.createConnection({
+      const socket = await this.dgClient.listen.v2.connect({
         model: "flux-general-en",
         eot_threshold: 0.7,
         eot_timeout_ms: 5000,
         encoding: "linear16",
         sample_rate: 16000,
+        Authorization: `Token ${this.config.apiKey}`,
       });
 
       const connectStartTime = Date.now();
