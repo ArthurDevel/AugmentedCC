@@ -29,6 +29,9 @@ Available tools:
 3. close_window - Closes the currently focused/active window. Params: {}
 4. run_command - Runs a command in the currently focused terminal. Params: { "command": string }
    The command string is typed and executed in whichever terminal is currently focused.
+5. ask_claude - Sends a prompt to Claude Code running in the focused terminal. Params: { "prompt": string }
+   The prompt is a natural-language instruction for Claude. Rephrase the user's speech into a
+   clear, concise instruction. Do NOT include the "ask claude to" prefix — just the task itself.
 
 Examples:
 - "Open a terminal" → { "tool": "open_terminal", "params": {} }
@@ -44,6 +47,10 @@ Examples:
 - "Run the npm install command" → { "tool": "run_command", "params": { "command": "npm install" } }
 - "Execute git status" → { "tool": "run_command", "params": { "command": "git status" } }
 - "Run npm run dev" → { "tool": "run_command", "params": { "command": "npm run dev" } }
+- "Ask Claude to create an empty file called test_file" → { "tool": "ask_claude", "params": { "prompt": "Create an empty file called test_file" } }
+- "Tell Claude to fix the login bug" → { "tool": "ask_claude", "params": { "prompt": "Fix the login bug" } }
+- "Have Claude add a dark mode toggle" → { "tool": "ask_claude", "params": { "prompt": "Add a dark mode toggle" } }
+- "Ask Claude to refactor the database layer" → { "tool": "ask_claude", "params": { "prompt": "Refactor the database layer" } }
 - "Yeah that looks good" → { "tool": null, "params": null }
 
 If the speech is a command, respond with ONLY valid JSON:
@@ -81,7 +88,10 @@ interface OpenRouterResponse {
  * @param apiKey - OpenRouter API key
  * @returns parsed ToolCall, or { tool: null, params: null } if not a command
  */
-export async function parseCommand(transcript: string, apiKey: string): Promise<ToolCall & { raw: string }> {
+export async function parseCommand(
+  transcript: string,
+  apiKey: string,
+): Promise<ToolCall & { raw: string }> {
   const messages: OpenRouterMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     { role: "user", content: transcript },
@@ -129,7 +139,10 @@ export async function parseCommand(transcript: string, apiKey: string): Promise<
  */
 function parseToolCallJson(raw: string): ToolCall {
   // Strip markdown fences if the LLM wraps the JSON
-  const cleaned = raw.replace(/```json?\s*/g, "").replace(/```/g, "").trim();
+  const cleaned = raw
+    .replace(/```json?\s*/g, "")
+    .replace(/```/g, "")
+    .trim();
 
   const parsed = JSON.parse(cleaned);
 
