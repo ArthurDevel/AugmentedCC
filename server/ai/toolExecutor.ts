@@ -11,6 +11,7 @@ import type {
   ToolCallEvent,
   StartNewCodingSessionParams,
   OpenTerminalParams,
+  OpenBrowserParams,
 } from "./types";
 
 // ============================================================================
@@ -49,6 +50,9 @@ export function executeTool(toolCall: ToolCall, config: ExecutorConfig): void {
     case "open_terminal":
       handleOpenTerminal(toolCall.params as OpenTerminalParams);
       break;
+    case "open_browser":
+      handleOpenBrowser(toolCall.params as OpenBrowserParams);
+      break;
   }
 
   config.onToolCall(event);
@@ -66,4 +70,8 @@ function handleStartNewCodingSession(params: StartNewCodingSessionParams): void 
 function handleOpenTerminal(params: OpenTerminalParams): void {
   // TODO: Wire to desktop — open a terminal panel
   console.log(`[tool] open_terminal: command="${params.command ?? "(none)"}"`);
+}
+
+function handleOpenBrowser(params: OpenBrowserParams): void {
+  console.log(`[tool] open_browser: url="${params.url}"`);
 }

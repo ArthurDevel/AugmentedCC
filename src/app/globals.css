@@ -385,7 +385,6 @@ body {
   word-break: break-word;
 }
 
-/* Mic mute button — centered at bottom of screen */
 /* Bottom controls bar */
 .bottom-controls {
   position: fixed;
@@ -465,6 +464,126 @@ body {
 
 .debug-toggle-label {
   user-select: none;
+}
+
+/* Voice debug tabs */
+.voice-debug-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.voice-debug-tab {
+  flex: 1;
+  padding: 5px 0;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 10px;
+  font-family: monospace;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.voice-debug-tab:hover {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.voice-debug-tab--active {
+  color: rgba(255, 255, 255, 0.85);
+  border-bottom-color: #60a5fa;
+}
+
+.voice-debug-tabs-meter {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+
+.voice-debug-tabs-meter-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  transition: opacity 0.1s;
+}
+
+/* Voice debug input tab */
+.voice-debug-input-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 8px;
+  gap: 6px;
+}
+
+.voice-debug-textarea {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  font-size: 12px;
+  font-family: monospace;
+  line-height: 1.5;
+  outline: none;
+  resize: none;
+}
+
+.voice-debug-textarea:focus {
+  border-color: rgba(96, 165, 250, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.voice-debug-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.2);
+  line-height: 1.6;
+}
+
+.voice-debug-input-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.voice-debug-input-hint {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.voice-debug-send-btn {
+  padding: 5px 16px;
+  border-radius: 5px;
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+  font-size: 11px;
+  font-family: monospace;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.voice-debug-send-btn:hover:not(:disabled) {
+  background: rgba(96, 165, 250, 0.3);
+  color: #93bbfd;
+}
+
+.voice-debug-send-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
 /* Audio meter */
