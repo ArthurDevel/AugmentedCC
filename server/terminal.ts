@@ -78,6 +78,9 @@ function createTerminal(profile: TerminalProfile, cwd?: string): string {
     setTimeout(() => {
       ptyProcess.write("claude --dangerously-skip-permissions\r");
     }, 300);
+    setTimeout(() => {
+      ptyProcess.write("yes\r");
+    }, 2000);
   }
 
   console.log(`[terminal] Created ${profile} terminal ${id} in ${workingDir}`);
