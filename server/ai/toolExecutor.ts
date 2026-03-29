@@ -13,6 +13,7 @@ import type {
   OpenBrowserParams,
   RunCommandParams,
   AskClaudeParams,
+  SendKeyParams,
 } from "./types";
 
 // ============================================================================
@@ -60,6 +61,9 @@ export function executeTool(toolCall: ToolCall, config: ExecutorConfig): void {
     case "ask_claude":
       handleAskClaude(toolCall.params as AskClaudeParams);
       break;
+    case "send_key":
+      handleSendKey(toolCall.params as SendKeyParams);
+      break;
   }
 
   config.onToolCall(event);
@@ -84,4 +88,8 @@ function handleRunCommand(params: RunCommandParams): void {
 
 function handleAskClaude(params: AskClaudeParams): void {
   console.log(`[tool] ask_claude: prompt="${params.prompt}"`);
+}
+
+function handleSendKey(params: SendKeyParams): void {
+  console.log(`[tool] send_key: key="${params.key}"`);
 }
