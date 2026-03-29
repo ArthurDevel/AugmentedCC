@@ -11,7 +11,7 @@
  */
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 
 // ============================================================================
 // CONSTANTS
@@ -117,9 +117,11 @@ function IframePanel({
 function VoiceDebugWindow({
   entries,
   onClear,
+  audioLevel,
 }: {
   entries: VoiceDebugEntry[];
   onClear: () => void;
+  audioLevel: number;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
@@ -220,6 +222,16 @@ function VoiceDebugWindow({
       </div>
       {!minimized && (
         <div className="voice-debug-body" ref={scrollRef}>
+          <div className="voice-debug-meter">
+            <span className="voice-debug-meter-label">MIC</span>
+            <div className="voice-debug-meter-track">
+              <div
+                className="voice-debug-meter-fill"
+                style={{ width: `${Math.min(audioLevel * 100, 100)}%` }}
+              />
+            </div>
+            <span className="voice-debug-meter-value">{(audioLevel * 100).toFixed(0)}%</span>
+          </div>
           {entries.length === 0 && (
             <div className="voice-debug-empty">No voice events yet</div>
           )}
@@ -260,10 +272,49 @@ function AudioMeter({ level }: { level: number }) {
 
 export default function DesktopPage() {
   const [panels, setPanels] = useState<Panel[]>([]);
-  // TODO: Wire to /ws/audio WebSocket consumer for live mic levels
-  const [audioLevel] = useState(0);
+  const [audioLevel, setAudioLevel] = useState(0);
   // TODO: Wire to voice pipeline WS to receive VoiceEvents
   const [debugEntries, setDebugEntries] = useState<VoiceDebugEntry[]>([]);
+
+  // Connect to /ws/audio as a consumer to receive live RMS levels
+  useEffect(() => {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const url = `${proto}//${window.location.host}/ws/audio?role=consumer`;
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
+
+    function connect() {
+      if (disposed) return;
+      ws = new WebSocket(url);
+
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === "level" && typeof msg.rms === "number") {
+            setAudioLevel(msg.rms);
+          }
+        } catch { /* ignore non-JSON */ }
+      };
+
+      ws.onclose = () => {
+        ws = null;
+        if (!disposed) {
+          reconnectTimer = setTimeout(connect, 2000);
+        }
+      };
+
+      ws.onerror = () => { ws?.close(); };
+    }
+
+    connect();
+
+    return () => {
+      disposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      ws?.close();
+    };
+  }, []);
 
   const clearDebugEntries = useCallback(() => {
     setDebugEntries([]);
@@ -297,7 +348,7 @@ export default function DesktopPage() {
         ))}
       </div>
 
-      <VoiceDebugWindow entries={debugEntries} onClear={clearDebugEntries} />
+      <VoiceDebugWindow entries={debugEntries} onClear={clearDebugEntries} audioLevel={audioLevel} />
       <AudioMeter level={audioLevel} />
     </div>
   );
