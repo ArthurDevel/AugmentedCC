@@ -32,6 +32,8 @@ Available tools:
 5. ask_claude - Sends a prompt to Claude Code running in the focused terminal. Params: { "prompt": string }
    The prompt is a natural-language instruction for Claude. Rephrase the user's speech into a
    clear, concise instruction. Do NOT include the "ask claude to" prefix — just the task itself.
+   IMPORTANT: If the user's speech sounds like it could be taking to claude, such as if it doesn't clearly
+   match any other tool, default to ask_claude. The user is likely talking to Claude.
 6. send_key - Sends a single keyboard key to the focused terminal. Params: { "key": string }
    Valid keys: "enter", "up", "down", "left", "right", "tab", "escape", "backspace", "space",
    "y", "n", or any single character. Use this when the user wants to press a key, confirm
@@ -55,6 +57,10 @@ Examples:
 - "Tell Claude to fix the login bug" → { "tool": "ask_claude", "params": { "prompt": "Fix the login bug" } }
 - "Have Claude add a dark mode toggle" → { "tool": "ask_claude", "params": { "prompt": "Add a dark mode toggle" } }
 - "Ask Claude to refactor the database layer" → { "tool": "ask_claude", "params": { "prompt": "Refactor the database layer" } }
+- "Make the background green" → { "tool": "ask_claude", "params": { "prompt": "Make the background green" } }
+- "Add a loading spinner to the homepage" → { "tool": "ask_claude", "params": { "prompt": "Add a loading spinner to the homepage" } }
+- "Fix the TypeScript errors" → { "tool": "ask_claude", "params": { "prompt": "Fix the TypeScript errors" } }
+- "Rename the user table to accounts" → { "tool": "ask_claude", "params": { "prompt": "Rename the user table to accounts" } }
 - "Press enter" → { "tool": "send_key", "params": { "key": "enter" } }
 - "Hit the down arrow" → { "tool": "send_key", "params": { "key": "down" } }
 - "Press escape" → { "tool": "send_key", "params": { "key": "escape" } }
@@ -67,8 +73,11 @@ Examples:
 If the speech is a command, respond with ONLY valid JSON:
 { "tool": "<tool_name>", "params": { ... } }
 
-If the speech is NOT a command (just conversation, noise, etc.), respond with:
+If the speech is NOT a command and not a coding/development instruction (just casual conversation,
+noise, filler words, etc.), respond with:
 { "tool": null, "params": null }
+
+When in doubt between null and ask_claude, prefer ask_claude — the user is likely talking to Claude.
 
 Respond with ONLY the JSON object, nothing else.`;
 
