@@ -14,7 +14,7 @@ import { TOOL_NAMES } from "./types";
 // ============================================================================
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const OPENROUTER_MODEL = "google/gemini-2.0-flash-001";
+const OPENROUTER_MODEL = "google/gemini-3-flash-preview";
 
 const SYSTEM_PROMPT = `You are a voice command parser for a developer's AR workspace.
 You receive transcribed speech and determine if it is a command.
