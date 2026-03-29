@@ -9,7 +9,6 @@
 import type {
   ToolCall,
   ToolCallEvent,
-  StartNewCodingSessionParams,
   OpenTerminalParams,
   OpenBrowserParams,
   RunCommandParams,
@@ -45,9 +44,6 @@ export function executeTool(toolCall: ToolCall, config: ExecutorConfig): void {
   };
 
   switch (toolCall.tool) {
-    case "start_new_coding_session":
-      handleStartNewCodingSession(toolCall.params as StartNewCodingSessionParams);
-      break;
     case "open_terminal":
       handleOpenTerminal(toolCall.params as OpenTerminalParams);
       break;
@@ -68,11 +64,6 @@ export function executeTool(toolCall: ToolCall, config: ExecutorConfig): void {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-function handleStartNewCodingSession(params: StartNewCodingSessionParams): void {
-  // TODO: Wire to Conductor — spawn a new coding agent workspace
-  console.log(`[tool] start_new_coding_session: task="${params.task}"`);
-}
 
 function handleOpenTerminal(params: OpenTerminalParams): void {
   // TODO: Wire to desktop — open a terminal panel
