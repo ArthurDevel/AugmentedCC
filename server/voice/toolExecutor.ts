@@ -9,9 +9,8 @@
 import {
   ToolCall,
   ToolCallEvent,
-  OpenSessionParams,
-  SendMessageParams,
-  SetActiveSessionParams,
+  StartNewCodingSessionParams,
+  OpenTerminalParams,
 } from "./types";
 
 // ============================================================================
@@ -28,8 +27,8 @@ interface ExecutorConfig {
 // ============================================================================
 
 /**
- * Executes a tool call. Currently logs the action; actual desktop
- * state mutations will be wired in when the WS bridge is built.
+ * Executes a tool call. Currently logs the action; actual side effects
+ * will be wired when the integration layer is built.
  * @param toolCall - parsed tool call from the command parser
  * @param config - executor configuration with event broadcaster
  */
@@ -44,14 +43,11 @@ export function executeTool(toolCall: ToolCall, config: ExecutorConfig): void {
   };
 
   switch (toolCall.tool) {
-    case "open_session":
-      handleOpenSession(toolCall.params as OpenSessionParams);
+    case "start_new_coding_session":
+      handleStartNewCodingSession(toolCall.params as StartNewCodingSessionParams);
       break;
-    case "send_message_to_session":
-      handleSendMessage(toolCall.params as SendMessageParams);
-      break;
-    case "set_active_session":
-      handleSetActiveSession(toolCall.params as SetActiveSessionParams);
+    case "open_terminal":
+      handleOpenTerminal(toolCall.params as OpenTerminalParams);
       break;
   }
 
@@ -62,29 +58,12 @@ export function executeTool(toolCall: ToolCall, config: ExecutorConfig): void {
 // HELPER FUNCTIONS
 // ============================================================================
 
-/**
- * Handles the open_session tool call.
- * @param params - contains the URL to open
- */
-function handleOpenSession(params: OpenSessionParams): void {
-  // TODO: Wire to desktop state -- create a new panel with this URL
-  console.log(`[tool] open_session: url=${params.url}`);
+function handleStartNewCodingSession(params: StartNewCodingSessionParams): void {
+  // TODO: Wire to Conductor — spawn a new coding agent workspace
+  console.log(`[tool] start_new_coding_session: task="${params.task}"`);
 }
 
-/**
- * Handles the send_message_to_session tool call.
- * @param params - contains sessionId and message to type
- */
-function handleSendMessage(params: SendMessageParams): void {
-  // TODO: Wire to desktop state -- type message into session's input box
-  console.log(`[tool] send_message_to_session: session=${params.sessionId} msg="${params.message}"`);
-}
-
-/**
- * Handles the set_active_session tool call.
- * @param params - contains sessionId to focus
- */
-function handleSetActiveSession(params: SetActiveSessionParams): void {
-  // TODO: Wire to desktop state -- set active/focused panel
-  console.log(`[tool] set_active_session: session=${params.sessionId}`);
+function handleOpenTerminal(params: OpenTerminalParams): void {
+  // TODO: Wire to desktop — open a terminal panel
+  console.log(`[tool] open_terminal: command="${params.command ?? "(none)"}"`);
 }

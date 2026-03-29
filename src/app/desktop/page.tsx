@@ -42,7 +42,7 @@ interface TerminalPaneDescriptor {
 
 interface VoiceDebugEntry {
   id: number;
-  type: "transcript" | "tool_call" | "error";
+  type: "transcript" | "tool_call" | "llm_response" | "error";
   text: string;
   timestamp: number;
 }
@@ -55,17 +55,119 @@ function generateId(): string {
   return `panel-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-// ============================================================================
 // PAGE
 // ============================================================================
 
 export default function DesktopPage() {
   const [panels, setPanels] = useState<Panel[]>([]);
   const [terminalPanes, setTerminalPanes] = useState<TerminalPaneDescriptor[]>([]);
-  // TODO: Wire to /ws/audio WebSocket consumer for live mic levels
-  const [audioLevel] = useState(0);
-  // TODO: Wire to voice pipeline WS to receive VoiceEvents
+  const [audioLevel, setAudioLevel] = useState(0);
   const [debugEntries, setDebugEntries] = useState<VoiceDebugEntry[]>([]);
+  const [interimText, setInterimText] = useState("");
+  const nextEntryId = useRef(0);
+
+  // Connect to /ws/voice to receive VoiceEvents (transcripts, tool calls, errors)
+  useEffect(() => {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const url = `${proto}//${window.location.host}/ws/voice`;
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
+
+    function connect() {
+      if (disposed) return;
+      ws = new WebSocket(url);
+
+      ws.onmessage = (ev) => {
+        try {
+          const event = JSON.parse(ev.data);
+          let text = "";
+          const type = event.type;
+          if (event.type === "transcript") {
+            if (!event.isFinal) {
+              setInterimText(event.text ?? "");
+              return;
+            }
+            setInterimText("");
+            text = event.text;
+          } else if (event.type === "tool_call") {
+            text = `${event.tool}(${JSON.stringify(event.params)})`;
+          } else if (event.type === "llm_response") {
+            text = event.raw;
+          } else if (event.type === "error") {
+            text = event.message;
+          } else {
+            return;
+          }
+
+          const entry: VoiceDebugEntry = {
+            id: nextEntryId.current++,
+            type,
+            text,
+            timestamp: event.timestamp ?? Date.now(),
+          };
+          setDebugEntries((prev) => [...prev, entry]);
+        } catch { /* ignore non-JSON */ }
+      };
+
+      ws.onclose = () => {
+        ws = null;
+        if (!disposed) {
+          reconnectTimer = setTimeout(connect, 2000);
+        }
+      };
+
+      ws.onerror = () => { ws?.close(); };
+    }
+
+    connect();
+
+    return () => {
+      disposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      ws?.close();
+    };
+  }, []);
+
+  // Connect to /ws/audio as a consumer to receive live RMS levels
+  useEffect(() => {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const url = `${proto}//${window.location.host}/ws/audio?role=consumer`;
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
+
+    function connect() {
+      if (disposed) return;
+      ws = new WebSocket(url);
+
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === "level" && typeof msg.rms === "number") {
+            setAudioLevel(msg.rms);
+          }
+        } catch { /* ignore non-JSON */ }
+      };
+
+      ws.onclose = () => {
+        ws = null;
+        if (!disposed) {
+          reconnectTimer = setTimeout(connect, 2000);
+        }
+      };
+
+      ws.onerror = () => { ws?.close(); };
+    }
+
+    connect();
+
+    return () => {
+      disposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      ws?.close();
+    };
+  }, []);
 
   const clearDebugEntries = useCallback(() => {
     setDebugEntries([]);
@@ -135,7 +237,7 @@ export default function DesktopPage() {
         ))}
       </div>
 
-      <VoiceDebugWindow entries={debugEntries} onClear={clearDebugEntries} />
+      <VoiceDebugWindow entries={debugEntries} onClear={clearDebugEntries} audioLevel={audioLevel} interim={interimText} />
       <AudioMeter level={audioLevel} />
     </div>
   );
@@ -378,16 +480,16 @@ const TerminalPane = ({ pane, onClose }: { pane: TerminalPaneDescriptor; onClose
 // VOICE DEBUG WINDOW
 // ============================================================================
 
-/**
- * Floating debug window showing voice transcript and tool calls.
- * Draggable via the title bar. Scrolls to bottom on new entries.
- */
 function VoiceDebugWindow({
   entries,
   onClear,
+  audioLevel,
+  interim,
 }: {
   entries: VoiceDebugEntry[];
   onClear: () => void;
+  audioLevel: number;
+  interim: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(
@@ -440,23 +542,19 @@ function VoiceDebugWindow({
 
   const typeClass = (type: VoiceDebugEntry["type"]): string => {
     switch (type) {
-      case "transcript":
-        return "debug-entry--transcript";
-      case "tool_call":
-        return "debug-entry--tool";
-      case "error":
-        return "debug-entry--error";
+      case "transcript": return "debug-entry--transcript";
+      case "tool_call": return "debug-entry--tool";
+      case "llm_response": return "debug-entry--llm";
+      case "error": return "debug-entry--error";
     }
   };
 
   const typeLabel = (type: VoiceDebugEntry["type"]): string => {
     switch (type) {
-      case "transcript":
-        return "STT";
-      case "tool_call":
-        return "CMD";
-      case "error":
-        return "ERR";
+      case "transcript": return "STT";
+      case "tool_call": return "CMD";
+      case "llm_response": return "LLM";
+      case "error": return "ERR";
     }
   };
 
@@ -487,7 +585,19 @@ function VoiceDebugWindow({
       </div>
       {!minimized && (
         <div className="voice-debug-body" ref={scrollRef}>
-          {entries.length === 0 && <div className="voice-debug-empty">No voice events yet</div>}
+          <div className="voice-debug-meter">
+            <span className="voice-debug-meter-label">MIC</span>
+            <div className="voice-debug-meter-track">
+              <div
+                className="voice-debug-meter-fill"
+                style={{ width: `${Math.min(audioLevel * 100, 100)}%` }}
+              />
+            </div>
+            <span className="voice-debug-meter-value">{(audioLevel * 100).toFixed(0)}%</span>
+          </div>
+          {entries.length === 0 && (
+            <div className="voice-debug-empty">No voice events yet</div>
+          )}
           {entries.map((entry) => (
             <div key={entry.id} className={`debug-entry ${typeClass(entry.type)}`}>
               <span className="debug-entry-time">{formatTime(entry.timestamp)}</span>
@@ -495,6 +605,13 @@ function VoiceDebugWindow({
               <span className="debug-entry-text">{entry.text}</span>
             </div>
           ))}
+          {interim && (
+            <div className="debug-entry debug-entry--interim">
+              <span className="debug-entry-time">{formatTime(Date.now())}</span>
+              <span className="debug-entry-label">...</span>
+              <span className="debug-entry-text">{interim}</span>
+            </div>
+          )}
         </div>
       )}
     </div>

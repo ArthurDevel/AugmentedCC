@@ -9,7 +9,7 @@
 // CONSTANTS
 // ============================================================================
 
-export const TOOL_NAMES = ["open_session", "send_message_to_session", "set_active_session"] as const;
+export const TOOL_NAMES = ["start_new_coding_session", "open_terminal"] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
 
@@ -17,20 +17,15 @@ export type ToolName = (typeof TOOL_NAMES)[number];
 // TOOL CALL TYPES
 // ============================================================================
 
-export interface OpenSessionParams {
-  url: string;
+export interface StartNewCodingSessionParams {
+  task: string;
 }
 
-export interface SendMessageParams {
-  sessionId: string;
-  message: string;
+export interface OpenTerminalParams {
+  command?: string;
 }
 
-export interface SetActiveSessionParams {
-  sessionId: string;
-}
-
-export type ToolParams = OpenSessionParams | SendMessageParams | SetActiveSessionParams;
+export type ToolParams = StartNewCodingSessionParams | OpenTerminalParams;
 
 /** Parsed tool call from the LLM. null tool means the transcript was not a command. */
 export interface ToolCall {
@@ -56,10 +51,16 @@ export interface ToolCallEvent {
   timestamp: number;
 }
 
+export interface LlmResponseEvent {
+  type: "llm_response";
+  raw: string;
+  timestamp: number;
+}
+
 export interface ErrorEvent {
   type: "error";
   message: string;
   timestamp: number;
 }
 
-export type VoiceEvent = TranscriptEvent | ToolCallEvent | ErrorEvent;
+export type VoiceEvent = TranscriptEvent | ToolCallEvent | LlmResponseEvent | ErrorEvent;
