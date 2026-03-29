@@ -12,6 +12,7 @@ import type {
   OpenTerminalParams,
   OpenBrowserParams,
   RunCommandParams,
+  AskClaudeParams,
 } from "./types";
 
 // ============================================================================
@@ -56,6 +57,9 @@ export function executeTool(toolCall: ToolCall, config: ExecutorConfig): void {
     case "run_command":
       handleRunCommand(toolCall.params as RunCommandParams);
       break;
+    case "ask_claude":
+      handleAskClaude(toolCall.params as AskClaudeParams);
+      break;
   }
 
   config.onToolCall(event);
@@ -76,4 +80,8 @@ function handleOpenBrowser(params: OpenBrowserParams): void {
 
 function handleRunCommand(params: RunCommandParams): void {
   console.log(`[tool] run_command: command="${params.command}"`);
+}
+
+function handleAskClaude(params: AskClaudeParams): void {
+  console.log(`[tool] ask_claude: prompt="${params.prompt}"`);
 }

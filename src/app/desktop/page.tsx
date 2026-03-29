@@ -121,27 +121,31 @@ export default function DesktopPage() {
       setTerminalPanes((prev) => [...prev, { id: paneId, terminalId, profile: "shell", initialCommand: command }]);
     } else if (tool === "close_window") {
       closeFocusedWindow();
-    } else if (tool === "run_command" && typeof params.command === "string") {
-      const command = params.command;
+    } else if (
+      (tool === "run_command" && typeof params.command === "string") ||
+      (tool === "ask_claude" && typeof params.prompt === "string")
+    ) {
+      const text = tool === "run_command"
+        ? (params.command as string)
+        : (params.prompt as string);
 
-      // Find a terminal to write to: prefer focused terminal, fall back to the last one
       const focusedPane = focusedWindowId
         ? terminalPanes.find((p) => p.id === focusedWindowId && p.terminalId)
         : null;
       const targetPane = focusedPane ?? [...terminalPanes].reverse().find((p) => p.terminalId);
 
       if (!targetPane?.terminalId) {
-        console.warn("[tool] run_command: no terminal available to run command in");
+        console.warn(`[tool] ${tool}: no terminal available`);
         return;
       }
 
       const res = await fetch(`/api/terminals/${targetPane.terminalId}/write`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: command + "\r" }),
+        body: JSON.stringify({ data: text + "\r" }),
       });
       if (!res.ok) {
-        console.error(`[tool] run_command: write failed (${res.status})`);
+        console.error(`[tool] ${tool}: write failed (${res.status})`);
       }
     }
   }, [closeFocusedWindow, focusedWindowId, terminalPanes]);
