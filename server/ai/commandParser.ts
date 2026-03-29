@@ -26,6 +26,7 @@ Available tools:
    Optionally opens at a specific working directory path and/or runs a command.
 3. open_browser - Opens a browser window/panel with a URL. Params: { "url": string }
    The url should be a full URL including protocol (e.g. https://google.com).
+4. close_window - Closes the currently focused/active window. Params: {}
 
 Examples:
 - "Start a new session to build a login page" → { "tool": "start_new_coding_session", "params": { "task": "build a login page" } }
@@ -35,6 +36,8 @@ Examples:
 - "Open a terminal and run npm install" → { "tool": "open_terminal", "params": { "command": "npm install" } }
 - "Open google" → { "tool": "open_browser", "params": { "url": "https://google.com" } }
 - "Open a browser to github.com/user/repo" → { "tool": "open_browser", "params": { "url": "https://github.com/user/repo" } }
+- "Close this window" → { "tool": "close_window", "params": {} }
+- "Close that" → { "tool": "close_window", "params": {} }
 - "Yeah that looks good" → { "tool": null, "params": null }
 
 If the speech is a command, respond with ONLY valid JSON:

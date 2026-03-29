@@ -102,11 +102,17 @@ body {
   flex-direction: column;
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.12);
   background: rgba(30, 30, 30, 0.92);
   min-width: 200px;
   /* Let flex children (e.g. .panel-terminal) shrink and receive a real height for xterm FitAddon */
   min-height: 0;
+  transition: border-color 0.15s ease;
+}
+
+.iframe-panel--focused {
+  border-color: #f97316;
+  border-width: 3px;
 }
 
 .panel-header {
@@ -142,11 +148,23 @@ body {
   color: #fff;
 }
 
-.panel-iframe {
+.panel-iframe-wrapper {
   flex: 1;
-  border: none;
+  position: relative;
+  min-height: 0;
+}
+
+.panel-iframe {
   width: 100%;
+  height: 100%;
+  border: none;
   background: #fff;
+}
+
+.panel-iframe-overlay {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
 }
 
 .panel-url-entry {

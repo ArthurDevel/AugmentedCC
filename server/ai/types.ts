@@ -9,7 +9,7 @@
 // CONSTANTS
 // ============================================================================
 
-export const TOOL_NAMES = ["start_new_coding_session", "open_terminal", "open_browser"] as const;
+export const TOOL_NAMES = ["start_new_coding_session", "open_terminal", "open_browser", "close_window"] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
 
@@ -30,7 +30,11 @@ export interface OpenBrowserParams {
   url: string;
 }
 
-export type ToolParams = StartNewCodingSessionParams | OpenTerminalParams | OpenBrowserParams;
+export interface CloseWindowParams {
+  // no params — always acts on the focused window
+}
+
+export type ToolParams = StartNewCodingSessionParams | OpenTerminalParams | OpenBrowserParams | CloseWindowParams;
 
 /** Parsed tool call from the LLM. null tool means the transcript was not a command. */
 export interface ToolCall {

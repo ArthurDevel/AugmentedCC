@@ -53,6 +53,9 @@ export function executeTool(toolCall: ToolCall, config: ExecutorConfig): void {
     case "open_browser":
       handleOpenBrowser(toolCall.params as OpenBrowserParams);
       break;
+    case "close_window":
+      console.log("[tool] close_window: closing focused window");
+      break;
   }
 
   config.onToolCall(event);

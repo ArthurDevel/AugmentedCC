@@ -66,11 +66,32 @@ export default function DesktopPage() {
   const [audioLevel, setAudioLevel] = useState(0);
   const [debugEntries, setDebugEntries] = useState<VoiceDebugEntry[]>([]);
   const [interimText, setInterimText] = useState("");
+  const [focusedWindowId, setFocusedWindowId] = useState<string | null>(null);
   const nextEntryId = useRef(0);
 
   // Connect to /ws/voice to receive VoiceEvents (transcripts, tool calls, errors)
   // Also used bidirectionally to send simulated text input
   const voiceWsRef = useRef<WebSocket | null>(null);
+
+  const closeFocusedWindow = useCallback(() => {
+    if (!focusedWindowId) return;
+
+    const panel = panels.find((p) => p.id === focusedWindowId);
+    if (panel) {
+      setPanels((prev) => prev.filter((p) => p.id !== focusedWindowId));
+      setFocusedWindowId(null);
+      return;
+    }
+
+    const termPane = terminalPanes.find((p) => p.id === focusedWindowId);
+    if (termPane) {
+      setTerminalPanes((prev) => prev.filter((p) => p.id !== focusedWindowId));
+      if (termPane.terminalId) {
+        fetch(`/api/terminals/${termPane.terminalId}`, { method: "DELETE" });
+      }
+      setFocusedWindowId(null);
+    }
+  }, [focusedWindowId, panels, terminalPanes]);
 
   const handleToolCallEvent = useCallback(async (tool: string, params: Record<string, unknown>) => {
     if (tool === "open_browser" && typeof params.url === "string") {
@@ -96,8 +117,10 @@ export default function DesktopPage() {
       const { id: terminalId } = (await res.json()) as { id: string };
 
       setTerminalPanes((prev) => [...prev, { id: paneId, terminalId, profile: "shell", initialCommand: command }]);
+    } else if (tool === "close_window") {
+      closeFocusedWindow();
     }
-  }, []);
+  }, [closeFocusedWindow]);
 
   useEffect(() => {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -286,12 +309,21 @@ export default function DesktopPage() {
           </div>
         )}
         {panels.map((panel) => (
-          <IframePanel key={panel.id} panel={panel} onRemove={removeById} onSetUrl={setPanelUrl} />
+          <IframePanel
+            key={panel.id}
+            panel={panel}
+            isFocused={focusedWindowId === panel.id}
+            onFocus={() => setFocusedWindowId(panel.id)}
+            onRemove={removeById}
+            onSetUrl={setPanelUrl}
+          />
         ))}
         {terminalPanes.map((pane) => (
           <TerminalPane
             key={pane.id}
             pane={pane}
+            isFocused={focusedWindowId === pane.id}
+            onFocus={() => setFocusedWindowId(pane.id)}
             onLaunch={(cwd) => launchTerminal(pane.id, cwd)}
             onClose={() => removeTerminal(pane.id, pane.terminalId)}
           />
@@ -344,10 +376,14 @@ function Toolbar({
 
 function IframePanel({
   panel,
+  isFocused,
+  onFocus,
   onRemove,
   onSetUrl,
 }: {
   panel: Panel;
+  isFocused: boolean;
+  onFocus: () => void;
   onRemove: (id: string) => void;
   onSetUrl: (id: string, url: string) => void;
 }) {
@@ -361,7 +397,11 @@ function IframePanel({
   };
 
   return (
-    <div className="iframe-panel" style={{ maxWidth: PANEL_MAX_WIDTH }}>
+    <div
+      className={`iframe-panel ${isFocused ? "iframe-panel--focused" : ""}`}
+      style={{ maxWidth: PANEL_MAX_WIDTH }}
+      onMouseDown={onFocus}
+    >
       <div className="panel-header">
         <span className="panel-url">{panel.url ?? "New Panel"}</span>
         <button className="panel-close" onClick={() => onRemove(panel.id)}>
@@ -369,7 +409,10 @@ function IframePanel({
         </button>
       </div>
       {panel.url ? (
-        <iframe src={panel.url} className="panel-iframe" title={panel.url} />
+        <div className="panel-iframe-wrapper">
+          <iframe src={panel.url} className="panel-iframe" title={panel.url} />
+          {!isFocused && <div className="panel-iframe-overlay" onMouseDown={onFocus} />}
+        </div>
       ) : (
         <div className="panel-url-entry">
           <div className="panel-url-row">
@@ -400,10 +443,14 @@ function IframePanel({
 
 const TerminalPane = ({
   pane,
+  isFocused,
+  onFocus,
   onLaunch,
   onClose,
 }: {
   pane: TerminalPaneDescriptor;
+  isFocused: boolean;
+  onFocus: () => void;
   onLaunch: (cwd: string) => void;
   onClose: () => void;
 }) => {
@@ -411,7 +458,7 @@ const TerminalPane = ({
 
   if (!pane.terminalId) {
     return (
-      <div className="iframe-panel">
+      <div className={`iframe-panel ${isFocused ? "iframe-panel--focused" : ""}`} onMouseDown={onFocus}>
         <div className="panel-header">
           <span className="panel-url">New {label}</span>
           <button className="panel-close" onClick={onClose}>
@@ -424,7 +471,7 @@ const TerminalPane = ({
   }
 
   return (
-    <div className="iframe-panel">
+    <div className={`iframe-panel ${isFocused ? "iframe-panel--focused" : ""}`} onMouseDown={onFocus}>
       <div className="panel-header">
         <span className="panel-url">{label}</span>
         <button className="panel-close" onClick={onClose}>
