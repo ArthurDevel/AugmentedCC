@@ -1,20 +1,19 @@
 /**
  * Deepgram Flux streaming speech-to-text client.
  *
- * - Opens a persistent WebSocket to Deepgram's streaming API
+ * Uses @deepgram/sdk v5 listen.v2 (Flux) for turn-based transcription.
+ * - Connects via SDK's listen.v2.createConnection()
  * - Accepts raw PCM audio chunks via sendAudio()
- * - Emits final transcripts via an onTranscript callback
+ * - Emits transcripts based on Flux turn events
  * - Auto-reconnects on disconnect
  */
 
-import WebSocket from "ws";
+import { DeepgramClient as DGClient } from "@deepgram/sdk";
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
-const DEEPGRAM_WS_URL = "wss://api.deepgram.com/v1/listen";
-const DEEPGRAM_MODEL = "nova-3";
 const RECONNECT_DELAY_MS = 2000;
 
 // ============================================================================
@@ -23,103 +22,122 @@ const RECONNECT_DELAY_MS = 2000;
 
 interface DeepgramConfig {
   apiKey: string;
-  /** Called when a final transcript is received */
   onTranscript: (text: string, isFinal: boolean) => void;
-  /** Called on errors */
   onError: (error: string) => void;
 }
 
-interface DeepgramResult {
-  channel: {
-    alternatives: Array<{
-      transcript: string;
-    }>;
-  };
-  is_final: boolean;
-  speech_final: boolean;
+// SDK message shapes (from V2Socket.Response union)
+interface FluxTurnInfo {
+  type: "TurnInfo";
+  event: "StartOfTurn" | "Update" | "EagerEndOfTurn" | "TurnResumed" | "EndOfTurn";
+  turn_index: number;
+  transcript: string;
+  end_of_turn_confidence: number;
 }
 
-interface DeepgramMessage {
-  type: string;
-  channel?: DeepgramResult["channel"];
-  is_final?: boolean;
-  speech_final?: boolean;
+interface FluxConnected {
+  type: "Connected";
 }
+
+interface FluxError {
+  type: "Error";
+  code: string;
+  description: string;
+}
+
+type FluxMessage = FluxTurnInfo | FluxConnected | FluxError | { type: string };
 
 // ============================================================================
 // MAIN CLASS
 // ============================================================================
 
 export class DeepgramClient {
-  private ws: WebSocket | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private socket: any = null;
+  private dgClient: DGClient;
   private config: DeepgramConfig;
   private shouldReconnect = true;
+  private connected = false;
+  private connecting = false;
 
   constructor(config: DeepgramConfig) {
     this.config = config;
+    this.dgClient = new DGClient({ apiKey: config.apiKey });
   }
 
-  /**
-   * Opens the WebSocket connection to Deepgram.
-   * Configures interim + final results, punctuation, and endpointing.
-   */
-  connect(): void {
-    const params = new URLSearchParams({
-      model: DEEPGRAM_MODEL,
-      punctuate: "true",
-      interim_results: "true",
-      endpointing: "300",
-      encoding: "linear16",
-      sample_rate: "16000",
-      channels: "1",
-    });
+  isConnected(): boolean {
+    return this.connected;
+  }
 
-    const url = `${DEEPGRAM_WS_URL}?${params.toString()}`;
+  async connect(): Promise<void> {
+    if (this.socket || this.connecting) return;
+    this.connecting = true;
 
-    this.ws = new WebSocket(url, {
-      headers: { Authorization: `Token ${this.config.apiKey}` },
-    });
+    try {
+      const socket = await this.dgClient.listen.v2.createConnection({
+        model: "flux-general-en",
+        eot_threshold: 0.7,
+        eot_timeout_ms: 5000,
+        encoding: "linear16",
+        sample_rate: 16000,
+      });
 
-    this.ws.on("open", () => {
-      console.log("[deepgram] connected");
-    });
+      socket.on("open", () => {
+        this.connected = true;
+        console.log("[deepgram] connected (Flux)");
+      });
 
-    this.ws.on("message", (data: WebSocket.Data) => {
-      this.handleMessage(data);
-    });
+      socket.on("message", (data: FluxMessage) => {
+        this.handleMessage(data);
+      });
 
-    this.ws.on("close", () => {
-      console.log("[deepgram] disconnected");
+      socket.on("close", () => {
+        this.connected = false;
+        this.socket = null;
+        console.log("[deepgram] disconnected");
+        if (this.shouldReconnect) {
+          setTimeout(() => this.connect(), RECONNECT_DELAY_MS);
+        }
+      });
+
+      socket.on("error", (err: unknown) => {
+        const msg = err instanceof Error ? err.message : JSON.stringify(err);
+        console.error("[deepgram] error:", msg);
+        this.config.onError(`Deepgram error: ${msg}`);
+      });
+
+      // Initiate the actual WebSocket connection
+      socket.connect();
+      await socket.waitForOpen();
+
+      this.socket = socket;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : JSON.stringify(err);
+      console.error("[deepgram] connect failed:", msg);
+      this.config.onError(`Deepgram connect failed: ${msg}`);
       if (this.shouldReconnect) {
         setTimeout(() => this.connect(), RECONNECT_DELAY_MS);
       }
-    });
-
-    this.ws.on("error", (err: Error) => {
-      this.config.onError(`Deepgram WS error: ${err.message}`);
-    });
-  }
-
-  /**
-   * Sends a chunk of raw PCM audio to Deepgram.
-   * @param audio - Buffer of linear16 PCM audio at 16kHz mono
-   */
-  sendAudio(audio: Buffer): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(audio);
+    } finally {
+      this.connecting = false;
     }
   }
 
-  /**
-   * Gracefully closes the Deepgram connection.
-   */
+  sendAudio(audio: Buffer): void {
+    if (this.connected && this.socket) {
+      this.socket.sendMedia(audio);
+    }
+  }
+
   disconnect(): void {
     this.shouldReconnect = false;
-    if (this.ws) {
-      // Send close frame per Deepgram protocol
-      this.ws.send(JSON.stringify({ type: "CloseStream" }));
-      this.ws.close();
-      this.ws = null;
+    if (this.socket) {
+      try {
+        this.socket.sendCloseStream({ type: "CloseStream" });
+      } catch { /* ignore */ }
+      this.socket.close();
+      this.socket = null;
+      this.connected = false;
     }
   }
 
@@ -127,20 +145,35 @@ export class DeepgramClient {
   // HELPER FUNCTIONS
   // ============================================================================
 
-  /**
-   * Parses incoming Deepgram messages and forwards transcripts.
-   * @param data - raw WebSocket message
-   */
-  private handleMessage(data: WebSocket.Data): void {
-    const msg: DeepgramMessage = JSON.parse(data.toString());
+  private handleMessage(data: FluxMessage): void {
+    if (data.type === "Connected") {
+      console.log("[deepgram] Flux session started");
+      return;
+    }
 
-    if (msg.type !== "Results" || !msg.channel) return;
+    if (data.type === "Error") {
+      const err = data as FluxError;
+      console.error(`[deepgram] error: ${err.code} - ${err.description}`);
+      this.config.onError(`Deepgram: ${err.description}`);
+      return;
+    }
 
-    const transcript = msg.channel.alternatives[0]?.transcript;
-    if (!transcript) return;
+    if (data.type !== "TurnInfo") return;
 
-    const isFinal = msg.is_final === true && msg.speech_final === true;
+    const turn = data as FluxTurnInfo;
 
-    this.config.onTranscript(transcript, isFinal);
+    if (turn.event === "StartOfTurn") {
+      console.log(`[deepgram] StartOfTurn (turn ${turn.turn_index})`);
+    }
+
+    if (turn.transcript) {
+      const isFinal = turn.event === "EndOfTurn" || turn.event === "EagerEndOfTurn";
+      console.log(`[deepgram] ${turn.event}: "${turn.transcript}"`);
+      this.config.onTranscript(turn.transcript, isFinal);
+    }
+
+    if (turn.event === "EndOfTurn") {
+      console.log(`[deepgram] EndOfTurn (turn ${turn.turn_index}, confidence=${turn.end_of_turn_confidence})`);
+    }
   }
 }

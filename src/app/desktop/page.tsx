@@ -273,8 +273,64 @@ function AudioMeter({ level }: { level: number }) {
 export default function DesktopPage() {
   const [panels, setPanels] = useState<Panel[]>([]);
   const [audioLevel, setAudioLevel] = useState(0);
-  // TODO: Wire to voice pipeline WS to receive VoiceEvents
   const [debugEntries, setDebugEntries] = useState<VoiceDebugEntry[]>([]);
+  const nextEntryId = useRef(0);
+
+  // Connect to /ws/voice to receive VoiceEvents (transcripts, tool calls, errors)
+  useEffect(() => {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const url = `${proto}//${window.location.host}/ws/voice`;
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
+
+    function connect() {
+      if (disposed) return;
+      ws = new WebSocket(url);
+
+      ws.onmessage = (ev) => {
+        try {
+          const event = JSON.parse(ev.data);
+          let text = "";
+          if (event.type === "transcript") {
+            if (!event.isFinal) return; // only show final transcripts
+            text = event.text;
+          } else if (event.type === "tool_call") {
+            text = `${event.tool}(${JSON.stringify(event.params)})`;
+          } else if (event.type === "error") {
+            text = event.message;
+          } else {
+            return;
+          }
+
+          const entry: VoiceDebugEntry = {
+            id: nextEntryId.current++,
+            type: event.type,
+            text,
+            timestamp: event.timestamp ?? Date.now(),
+          };
+          setDebugEntries((prev) => [...prev, entry]);
+        } catch { /* ignore non-JSON */ }
+      };
+
+      ws.onclose = () => {
+        ws = null;
+        if (!disposed) {
+          reconnectTimer = setTimeout(connect, 2000);
+        }
+      };
+
+      ws.onerror = () => { ws?.close(); };
+    }
+
+    connect();
+
+    return () => {
+      disposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      ws?.close();
+    };
+  }, []);
 
   // Connect to /ws/audio as a consumer to receive live RMS levels
   useEffect(() => {

@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "tsx server/server.ts",
+    "dev": "tsx --env-file=.env.local server/server.ts",
     "dev:next": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@deepgram/sdk": "^5.0.0",
     "next": "16.2.1",
     "puppeteer": "^24.40.0",
     "qrcode": "^1.5.4",

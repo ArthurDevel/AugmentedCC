@@ -20,6 +20,7 @@ import { URL } from "url";
 import next from "next";
 import puppeteer, { type Browser, type Page, type CDPSession } from "puppeteer";
 import { WebSocketServer, WebSocket } from "ws";
+import { VoicePipeline } from "./voice/voicePipeline";
 
 // ============================================================================
 // CONSTANTS
@@ -107,8 +108,24 @@ function spawnFfmpegDecoder(): ChildProcess {
     "-ac", String(AUDIO_CHANNELS),
     "pipe:1",
   ], {
-    stdio: ["pipe", "pipe", "ignore"],
+    stdio: ["pipe", "pipe", "pipe"],
   });
+}
+
+/**
+ * Converts an f32le PCM buffer to linear16 (s16le) for Deepgram.
+ * @param f32buf - Raw f32le PCM buffer from ffmpeg
+ * @returns Buffer of s16le PCM samples
+ */
+function f32leToLinear16(f32buf: Buffer): Buffer {
+  const aligned = new Uint8Array(f32buf);
+  const floats = new Float32Array(aligned.buffer, 0, Math.floor(aligned.byteLength / 4));
+  const int16 = new Int16Array(floats.length);
+  for (let i = 0; i < floats.length; i++) {
+    const clamped = Math.max(-1, Math.min(1, floats[i]));
+    int16[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+  }
+  return Buffer.from(int16.buffer);
 }
 
 /**
@@ -220,17 +237,25 @@ async function dispatchInputEvent(cdp: CDPSession, event: InputEvent): Promise<v
 /**
  * Handles an audio WebSocket connection for a producer (mic source).
  * Spawns an ffmpeg process to decode webm/opus to PCM, computes RMS,
- * and broadcasts levels to all consumers.
+ * broadcasts levels to all consumers, and feeds audio to the voice pipeline.
  * @param ws - The WebSocket connection from a producer
  * @param audioConsumers - Set of all connected consumer clients
+ * @param voicePipeline - Voice pipeline to feed decoded PCM into (may be null)
  */
-function handleAudioProducer(ws: WebSocket, audioConsumers: Set<WebSocket>): void {
+function handleAudioProducer(ws: WebSocket, audioConsumers: Set<WebSocket>, voicePipeline: VoicePipeline | null): void {
   const ffmpeg = spawnFfmpegDecoder();
   const state: AudioProducerState = { ffmpeg, latestRms: 0 };
 
-  // Read PCM output from ffmpeg, compute RMS
+  // Read PCM output from ffmpeg, compute RMS, feed voice pipeline
   ffmpeg.stdout!.on("data", (chunk: Buffer) => {
     state.latestRms = computeRms(chunk);
+    if (voicePipeline) {
+      voicePipeline.sendAudio(f32leToLinear16(chunk));
+    }
+  });
+
+  ffmpeg.stderr!.on("data", (chunk: Buffer) => {
+    console.error("[audio] ffmpeg stderr:", chunk.toString());
   });
 
   ffmpeg.on("error", (err) => {
@@ -386,13 +411,37 @@ async function main(): Promise<void> {
   // WebSocket servers (noServer mode for manual upgrade routing)
   const screencastWss = new WebSocketServer({ noServer: true });
   const audioWss = new WebSocketServer({ noServer: true });
+  const voiceWss = new WebSocketServer({ noServer: true });
 
   // Client tracking
   const screencastClients = new Set<WebSocket>();
   const audioConsumers = new Set<WebSocket>();
+  const voiceConsumers = new Set<WebSocket>();
 
   // Will be set once Puppeteer is ready
   let cdpSession: CDPSession | null = null;
+
+  // Initialize voice pipeline if API keys are present
+  let voicePipeline: VoicePipeline | null = null;
+  const deepgramKey = process.env.DEEPGRAM_API_KEY;
+  const openrouterKey = process.env.OPENROUTER_KEY;
+
+  if (deepgramKey && openrouterKey) {
+    voicePipeline = new VoicePipeline({
+      deepgramApiKey: deepgramKey,
+      openRouterApiKey: openrouterKey,
+    });
+
+    // Forward voice events to all /ws/voice consumers
+    voicePipeline.subscribe((event) => {
+      broadcastJson(voiceConsumers, event);
+    });
+
+    voicePipeline.start();
+    console.log("[voice] Pipeline started with Deepgram + OpenRouter");
+  } else {
+    console.warn("[voice] DEEPGRAM_API_KEY or OPENROUTER_KEY missing — voice pipeline disabled");
+  }
 
   // Route WebSocket upgrades by URL path
   httpsServer.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) => {
@@ -410,6 +459,10 @@ async function main(): Promise<void> {
     } else if (pathname === "/ws/audio") {
       audioWss.handleUpgrade(request, socket, head, (ws) => {
         audioWss.emit("connection", ws, request);
+      });
+    } else if (pathname === "/ws/voice") {
+      voiceWss.handleUpgrade(request, socket, head, (ws) => {
+        voiceWss.emit("connection", ws, request);
       });
     } else {
       // Not a recognized WS endpoint, let Next.js handle (e.g. HMR)
@@ -430,7 +483,7 @@ async function main(): Promise<void> {
 
     if (role === "producer") {
       console.log("[audio] Producer connected");
-      handleAudioProducer(ws, audioConsumers);
+      handleAudioProducer(ws, audioConsumers, voicePipeline);
     } else if (role === "consumer") {
       console.log("[audio] Consumer connected");
       handleAudioConsumer(ws, audioConsumers);
@@ -438,6 +491,15 @@ async function main(): Promise<void> {
       console.warn("[audio] Unknown role:", role);
       ws.close(1008, "Missing or invalid role query parameter");
     }
+  });
+
+  // Voice debug WebSocket connections
+  voiceWss.on("connection", (ws: WebSocket) => {
+    console.log("[voice] Debug consumer connected");
+    voiceConsumers.add(ws);
+    ws.on("close", () => {
+      voiceConsumers.delete(ws);
+    });
   });
 
   // Start listening

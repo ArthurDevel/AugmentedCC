@@ -42,11 +42,11 @@ export class VoicePipeline {
   }
 
   /**
-   * Starts the voice pipeline by connecting to Deepgram.
+   * Starts the voice pipeline. Deepgram connection is deferred until
+   * the first audio chunk arrives to avoid idle timeouts.
    */
   start(): void {
-    console.log("[voice] starting pipeline");
-    this.deepgram.connect();
+    console.log("[voice] pipeline ready (Deepgram connects on first audio)");
   }
 
   /**
@@ -59,9 +59,18 @@ export class VoicePipeline {
 
   /**
    * Feeds raw PCM audio into the pipeline.
+   * Lazily connects to Deepgram on the first call.
    * @param audio - Buffer of linear16 PCM audio at 16kHz mono
    */
   sendAudio(audio: Buffer): void {
+    if (!this.deepgram.isConnected()) {
+      // Fire-and-forget — audio before connection opens is dropped,
+      // which is fine since it's just the first ~1s of silence/noise.
+      this.deepgram.connect().catch((err) => {
+        console.error("[voice] Deepgram connect error:", err);
+      });
+      return;
+    }
     this.deepgram.sendAudio(audio);
   }
 
