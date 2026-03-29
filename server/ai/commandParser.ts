@@ -22,8 +22,8 @@ You receive transcribed speech and determine if it is a command.
 Available tools:
 1. start_new_coding_session - Starts a new coding agent session. Params: { "task": string }
    The task is a description of what the user wants to build or fix.
-2. open_terminal - Opens a terminal window. Params: { "cwd"?: string, "command"?: string }
-   Optionally opens at a specific working directory path and/or runs a command.
+2. open_terminal - Opens a terminal window. Params: { "command"?: string }
+   Optionally runs a command on open.
 3. open_browser - Opens a browser window/panel with a URL. Params: { "url": string }
    The url should be a full URL including protocol (e.g. https://google.com).
 4. close_window - Closes the currently focused/active window. Params: {}
@@ -33,8 +33,6 @@ Available tools:
 Examples:
 - "Start a new session to build a login page" → { "tool": "start_new_coding_session", "params": { "task": "build a login page" } }
 - "Open a terminal" → { "tool": "open_terminal", "params": {} }
-- "Open a terminal at ~/projects" → { "tool": "open_terminal", "params": { "cwd": "~/projects" } }
-- "Open a terminal in /Users/me/app and run npm install" → { "tool": "open_terminal", "params": { "cwd": "/Users/me/app", "command": "npm install" } }
 - "Open a terminal and run npm install" → { "tool": "open_terminal", "params": { "command": "npm install" } }
 - "Open google" → { "tool": "open_browser", "params": { "url": "https://google.com" } }
 - "Open a browser to github.com/user/repo" → { "tool": "open_browser", "params": { "url": "https://github.com/user/repo" } }

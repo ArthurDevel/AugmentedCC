@@ -22,7 +22,6 @@ export interface StartNewCodingSessionParams {
 }
 
 export interface OpenTerminalParams {
-  cwd?: string;
   command?: string;
 }
 

@@ -101,14 +101,13 @@ export default function DesktopPage() {
         return [...prev, { id: generateId(), url }];
       });
     } else if (tool === "open_terminal") {
-      const cwd = typeof params.cwd === "string" ? params.cwd : "";
       const command = typeof params.command === "string" ? params.command : undefined;
       const paneId = generateId();
 
       const res = await fetch("/api/terminals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile: "shell", cwd: cwd || undefined }),
+        body: JSON.stringify({ profile: "shell" }),
       });
       if (!res.ok) {
         console.error(`[tool] Failed to create terminal: ${res.status}`);

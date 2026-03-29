@@ -57,7 +57,7 @@ function resolvePath(p: string): string {
 function createTerminal(profile: TerminalProfile, cwd?: string): string {
   const id = generateId();
   const shell = process.env.SHELL ?? "/bin/zsh";
-  const defaultDir = profile === "claude" ? process.cwd() : process.env.HOME ?? "/";
+  const defaultDir = resolvePath("~/.augmentedCC/project");
   const workingDir = cwd ? resolvePath(cwd) : defaultDir;
 
   const ptyProcess = pty.spawn(shell, [], {
