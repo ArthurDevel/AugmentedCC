@@ -2,6 +2,9 @@
   "name": "conductor-playground",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "tsx server/server.ts",
     "dev:next": "next dev",
