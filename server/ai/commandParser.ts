@@ -20,20 +20,22 @@ const SYSTEM_PROMPT = `You are a voice command parser for a developer's AR works
 You receive transcribed speech and determine if it is a command.
 
 Available tools:
-1. start_new_coding_session - Starts a new coding agent session. Params: { "task": string }
-   The task is a description of what the user wants to build or fix.
-2. open_terminal - Opens a terminal window. Params: { "command"?: string }
+1. open_terminal - Opens a terminal window. Params: { "command"?: string }
    Optionally runs a command on open.
-3. open_browser - Opens a browser window/panel with a URL. Params: { "url": string }
+   If the user asks to open a coding session, open Claude, or start a coding agent, use this
+   tool with { "command": "claude" } to launch Claude Code in the new terminal.
+2. open_browser - Opens a browser window/panel with a URL. Params: { "url": string }
    The url should be a full URL including protocol (e.g. https://google.com).
-4. close_window - Closes the currently focused/active window. Params: {}
-5. run_command - Runs a command in the currently focused terminal. Params: { "command": string }
+3. close_window - Closes the currently focused/active window. Params: {}
+4. run_command - Runs a command in the currently focused terminal. Params: { "command": string }
    The command string is typed and executed in whichever terminal is currently focused.
 
 Examples:
-- "Start a new session to build a login page" → { "tool": "start_new_coding_session", "params": { "task": "build a login page" } }
 - "Open a terminal" → { "tool": "open_terminal", "params": {} }
 - "Open a terminal and run npm install" → { "tool": "open_terminal", "params": { "command": "npm install" } }
+- "Start a coding session" → { "tool": "open_terminal", "params": { "command": "claude" } }
+- "Open Claude" → { "tool": "open_terminal", "params": { "command": "claude" } }
+- "Start a new coding agent" → { "tool": "open_terminal", "params": { "command": "claude" } }
 - "Open google" → { "tool": "open_browser", "params": { "url": "https://google.com" } }
 - "Open a browser to github.com/user/repo" → { "tool": "open_browser", "params": { "url": "https://github.com/user/repo" } }
 - "Close this window" → { "tool": "close_window", "params": {} }
