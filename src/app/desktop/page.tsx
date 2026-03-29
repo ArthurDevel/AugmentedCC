@@ -338,8 +338,8 @@ export default function DesktopPage() {
 
   const resumeSessions = useCallback(async () => {
     const sessions = [
-      { resumeSessionId: "ac20a02b-21c9-429f-a777-3bf448b27a67", cwd: "/Users/Focus/conductor/workspaces/figmadrive/kinshasa" },
-      { resumeSessionId: "b87bcbae-7a87-4592-8468-d908506eff42", cwd: "/Users/Focus/Documents/Codebases/KobeCV" },
+      { resumeSessionId: "50f8cda1-7136-44ee-b1a0-b204aac70888", cwd: "/Users/Focus/conductor/workspaces/claude-code-voice/miami" },
+      { resumeSessionId: "05fd293b-90c5-445c-a3b5-43915b88d5cc", cwd: "/Users/Focus/conductor/workspaces/brief/valencia-v1" },
     ];
     for (const s of sessions) {
       const paneId = generateId();
