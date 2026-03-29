@@ -12,6 +12,7 @@ import type {
   StartNewCodingSessionParams,
   OpenTerminalParams,
   OpenBrowserParams,
+  RunCommandParams,
 } from "./types";
 
 // ============================================================================
@@ -56,6 +57,9 @@ export function executeTool(toolCall: ToolCall, config: ExecutorConfig): void {
     case "close_window":
       console.log("[tool] close_window: closing focused window");
       break;
+    case "run_command":
+      handleRunCommand(toolCall.params as RunCommandParams);
+      break;
   }
 
   config.onToolCall(event);
@@ -77,4 +81,8 @@ function handleOpenTerminal(params: OpenTerminalParams): void {
 
 function handleOpenBrowser(params: OpenBrowserParams): void {
   console.log(`[tool] open_browser: url="${params.url}"`);
+}
+
+function handleRunCommand(params: RunCommandParams): void {
+  console.log(`[tool] run_command: command="${params.command}"`);
 }

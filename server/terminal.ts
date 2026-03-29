@@ -100,6 +100,13 @@ function resizeTerminal(id: string, cols: number, rows: number): boolean {
   return true;
 }
 
+function writeTerminal(id: string, data: string): boolean {
+  const session = terminals.get(id);
+  if (!session) return false;
+  session.pty.write(data);
+  return true;
+}
+
 function listTerminals(): Array<{ id: string; profile: TerminalProfile; cwd: string }> {
   return Array.from(terminals.entries()).map(([id, session]) => ({
     id,
@@ -173,6 +180,16 @@ export async function handleTerminalHttp(
     const { cols, rows } = JSON.parse(body) as { cols: number; rows: number };
     const resized = resizeTerminal(resizeMatch[1], cols, rows);
     jsonResponse(res, resized ? 200 : 404, { ok: resized });
+    return true;
+  }
+
+  // POST /api/terminals/:id/write
+  const writeMatch = pathname.match(/^\/api\/terminals\/([^/]+)\/write$/);
+  if (method === "POST" && writeMatch) {
+    const body = await readBody(req);
+    const { data } = JSON.parse(body) as { data: string };
+    const written = writeTerminal(writeMatch[1], data);
+    jsonResponse(res, written ? 200 : 404, { ok: written });
     return true;
   }
 
