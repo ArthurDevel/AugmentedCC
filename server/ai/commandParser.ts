@@ -6,7 +6,8 @@
  * - Returns a structured ToolCall or null if the transcript is not a command
  */
 
-import { ToolCall, ToolName, TOOL_NAMES } from "./types";
+import type { ToolCall, ToolName } from "./types";
+import { TOOL_NAMES } from "./types";
 
 // ============================================================================
 // CONSTANTS
