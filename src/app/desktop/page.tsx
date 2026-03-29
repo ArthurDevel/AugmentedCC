@@ -40,6 +40,7 @@ interface TerminalPaneDescriptor {
   terminalId: string | null;
   profile: "shell" | "claude";
   initialCommand?: string;
+  resumeSessionId?: string;
 }
 
 interface VoiceDebugEntry {
@@ -300,8 +301,8 @@ export default function DesktopPage() {
     setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, url } : p)));
   }, []);
 
-  const addTerminal = useCallback((profile: "shell" | "claude") => {
-    setTerminalPanes((prev) => [...prev, { id: generateId(), terminalId: null, profile }]);
+  const addTerminal = useCallback((profile: "shell" | "claude", resumeSessionId?: string) => {
+    setTerminalPanes((prev) => [...prev, { id: generateId(), terminalId: null, profile, resumeSessionId }]);
   }, []);
 
   const launchTerminal = useCallback(async (paneId: string, cwd: string) => {
@@ -310,7 +311,7 @@ export default function DesktopPage() {
     const res = await fetch("/api/terminals", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profile: pane.profile, cwd: cwd || undefined }),
+      body: JSON.stringify({ profile: pane.profile, cwd: cwd || undefined, resumeSessionId: pane.resumeSessionId }),
     });
     if (!res.ok) throw new Error(`Failed to create terminal: ${res.status}`);
     const { id: terminalId } = (await res.json()) as { id: string };
@@ -321,6 +322,37 @@ export default function DesktopPage() {
 
   const addShell = useCallback(() => addTerminal("shell"), [addTerminal]);
   const addClaude = useCallback(() => addTerminal("claude"), [addTerminal]);
+
+  const sendKeyToFocusedTerminal = useCallback((key: string) => {
+    const focusedPane = focusedWindowId
+      ? terminalPanes.find((p) => p.id === focusedWindowId)
+      : null;
+    const target = focusedPane ?? terminalPanes[terminalPanes.length - 1];
+    if (!target?.terminalId) return;
+    fetch(`/api/terminals/${target.terminalId}/write`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: key }),
+    });
+  }, [focusedWindowId, terminalPanes]);
+
+  const resumeSessions = useCallback(async () => {
+    const sessions = [
+      { resumeSessionId: "ac20a02b-21c9-429f-a777-3bf448b27a67", cwd: "/Users/Focus/conductor/workspaces/figmadrive/kinshasa" },
+      { resumeSessionId: "b87bcbae-7a87-4592-8468-d908506eff42", cwd: "/Users/Focus/Documents/Codebases/KobeCV" },
+    ];
+    for (const s of sessions) {
+      const paneId = generateId();
+      const res = await fetch("/api/terminals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile: "claude", cwd: s.cwd, resumeSessionId: s.resumeSessionId }),
+      });
+      if (!res.ok) continue;
+      const { id: terminalId } = (await res.json()) as { id: string };
+      setTerminalPanes((prev) => [...prev, { id: paneId, terminalId, profile: "claude" }]);
+    }
+  }, []);
 
   const removeTerminal = useCallback(async (paneId: string, terminalId: string | null) => {
     setTerminalPanes((prev) => prev.filter((p) => p.id !== paneId));
@@ -366,6 +398,10 @@ export default function DesktopPage() {
         <button className="bottom-control-button" onClick={removeLast} disabled={panels.length === 0}>- Remove Panel</button>
         <button className="bottom-control-button" onClick={addShell}>+ Shell</button>
         <button className="bottom-control-button" onClick={addClaude}>+ Claude</button>
+        <button className="bottom-control-button" onClick={resumeSessions}>Resume Sessions</button>
+        <button className="bottom-control-button" onClick={() => sendKeyToFocusedTerminal("\x1b[A")} title="Arrow Up">↑</button>
+        <button className="bottom-control-button" onClick={() => sendKeyToFocusedTerminal("\x1b[B")} title="Arrow Down">↓</button>
+        <button className="bottom-control-button" onClick={() => sendKeyToFocusedTerminal("\r")} title="Enter">⏎</button>
         <span className="bottom-control-count">{panels.length} / {MAX_PANELS}</span>
         <MicMuteButton muted={micMuted} onToggle={toggleMute} />
         <button
