@@ -64,6 +64,7 @@ export class VoicePipeline {
    */
   sendAudio(audio: Buffer): void {
     if (!this.deepgram.isConnected()) {
+      console.log(`[voice-timing] Deepgram not connected, triggering connect t=${Date.now()}`);
       // Fire-and-forget — audio before connection opens is dropped,
       // which is fine since it's just the first ~1s of silence/noise.
       this.deepgram.connect().catch((err) => {
@@ -106,10 +107,13 @@ export class VoicePipeline {
     // Only parse final transcripts for commands
     if (!isFinal) return;
 
-    console.log(`[voice] final transcript: "${text}"`);
+    const finalTime = Date.now();
+    console.log(`[voice-timing] final transcript at t=${finalTime}: "${text}"`);
 
     try {
+      const llmStart = Date.now();
       const result = await parseCommand(text, this.openRouterApiKey);
+      console.log(`[voice-timing] LLM responded in ${Date.now() - llmStart}ms`);
 
       const llmEvent: LlmResponseEvent = {
         type: "llm_response",
