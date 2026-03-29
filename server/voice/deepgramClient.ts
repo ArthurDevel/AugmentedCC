@@ -59,6 +59,7 @@ export class DeepgramClient {
   private shouldReconnect = true;
   private connected = false;
   private connecting = false;
+  private reconnectAttempts = 0;
 
   constructor(config: DeepgramConfig) {
     this.config = config;
@@ -84,6 +85,7 @@ export class DeepgramClient {
 
       socket.on("open", () => {
         this.connected = true;
+        this.reconnectAttempts = 0;
         console.log("[deepgram] connected (Flux)");
       });
 
@@ -95,15 +97,12 @@ export class DeepgramClient {
         this.connected = false;
         this.socket = null;
         console.log("[deepgram] disconnected");
-        if (this.shouldReconnect) {
-          setTimeout(() => this.connect(), RECONNECT_DELAY_MS);
-        }
+        this.scheduleReconnect();
       });
 
       socket.on("error", (err: unknown) => {
         const msg = err instanceof Error ? err.message : JSON.stringify(err);
         console.error("[deepgram] error:", msg);
-        this.config.onError(`Deepgram error: ${msg}`);
       });
 
       // Initiate the actual WebSocket connection
@@ -114,10 +113,7 @@ export class DeepgramClient {
     } catch (err) {
       const msg = err instanceof Error ? err.message : JSON.stringify(err);
       console.error("[deepgram] connect failed:", msg);
-      this.config.onError(`Deepgram connect failed: ${msg}`);
-      if (this.shouldReconnect) {
-        setTimeout(() => this.connect(), RECONNECT_DELAY_MS);
-      }
+      this.scheduleReconnect();
     } finally {
       this.connecting = false;
     }
@@ -144,6 +140,14 @@ export class DeepgramClient {
   // ============================================================================
   // HELPER FUNCTIONS
   // ============================================================================
+
+  private scheduleReconnect(): void {
+    if (!this.shouldReconnect) return;
+    this.reconnectAttempts++;
+    const delay = Math.min(RECONNECT_DELAY_MS * 2 ** this.reconnectAttempts, 30_000);
+    console.log(`[deepgram] reconnecting in ${(delay / 1000).toFixed(0)}s...`);
+    setTimeout(() => this.connect(), delay);
+  }
 
   private handleMessage(data: FluxMessage): void {
     if (data.type === "Connected") {

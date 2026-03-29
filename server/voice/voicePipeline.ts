@@ -9,7 +9,7 @@
 import { DeepgramClient } from "./deepgramClient";
 import { parseCommand } from "./commandParser";
 import { executeTool } from "./toolExecutor";
-import { VoiceEvent, TranscriptEvent, ToolCallEvent } from "./types";
+import { VoiceEvent, TranscriptEvent, ToolCallEvent, LlmResponseEvent } from "./types";
 
 // ============================================================================
 // TYPES
@@ -109,11 +109,18 @@ export class VoicePipeline {
     console.log(`[voice] final transcript: "${text}"`);
 
     try {
-      const toolCall = await parseCommand(text, this.openRouterApiKey);
+      const result = await parseCommand(text, this.openRouterApiKey);
 
-      if (toolCall.tool !== null) {
-        console.log(`[voice] parsed command: ${toolCall.tool}`);
-        executeTool(toolCall, {
+      const llmEvent: LlmResponseEvent = {
+        type: "llm_response",
+        raw: result.raw,
+        timestamp: Date.now(),
+      };
+      this.broadcast(llmEvent);
+
+      if (result.tool !== null) {
+        console.log(`[voice] parsed command: ${result.tool}`);
+        executeTool(result, {
           onToolCall: (event: ToolCallEvent) => this.broadcast(event),
         });
       }

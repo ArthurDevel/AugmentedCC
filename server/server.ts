@@ -102,6 +102,7 @@ function computeRms(data: Buffer): number {
  */
 function spawnFfmpegDecoder(): ChildProcess {
   return spawn("ffmpeg", [
+    "-loglevel", "error",
     "-i", "pipe:0",
     "-f", "f32le",
     "-ar", String(AUDIO_SAMPLE_RATE),

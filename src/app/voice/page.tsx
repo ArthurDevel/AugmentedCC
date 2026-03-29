@@ -14,11 +14,12 @@ import { useState, useEffect, useRef, useCallback } from "react";
 // ============================================================================
 
 interface VoiceEvent {
-  type: "transcript" | "tool_call" | "error";
+  type: "transcript" | "tool_call" | "llm_response" | "error";
   text?: string;
   isFinal?: boolean;
   tool?: string;
   params?: Record<string, unknown>;
+  raw?: string;
   message?: string;
   timestamp: number;
 }
@@ -92,6 +93,8 @@ export default function VoiceTestPage() {
             text = event.text ?? "";
           } else if (event.type === "tool_call") {
             text = `${event.tool}(${JSON.stringify(event.params)})`;
+          } else if (event.type === "llm_response") {
+            text = event.raw ?? "";
           } else if (event.type === "error") {
             text = event.message ?? "Unknown error";
           } else {
@@ -255,10 +258,12 @@ export default function VoiceTestPage() {
                 ...styles.label,
                 color: entry.type === "transcript" ? "#60a5fa"
                      : entry.type === "tool_call" ? "#4ade80"
+                     : entry.type === "llm_response" ? "#c084fc"
                      : "#f87171",
               }}>
                 {entry.type === "transcript" ? "STT"
                   : entry.type === "tool_call" ? "CMD"
+                  : entry.type === "llm_response" ? "LLM"
                   : "ERR"}
               </span>
               <span style={styles.text}>{entry.text}</span>
