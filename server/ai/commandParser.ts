@@ -32,6 +32,10 @@ Available tools:
 5. ask_claude - Sends a prompt to Claude Code running in the focused terminal. Params: { "prompt": string }
    The prompt is a natural-language instruction for Claude. Rephrase the user's speech into a
    clear, concise instruction. Do NOT include the "ask claude to" prefix — just the task itself.
+6. send_key - Sends a single keyboard key to the focused terminal. Params: { "key": string }
+   Valid keys: "enter", "up", "down", "left", "right", "tab", "escape", "backspace", "space",
+   "y", "n", or any single character. Use this when the user wants to press a key, confirm
+   something, navigate menus, or send a single character.
 
 Examples:
 - "Open a terminal" → { "tool": "open_terminal", "params": {} }
@@ -51,6 +55,13 @@ Examples:
 - "Tell Claude to fix the login bug" → { "tool": "ask_claude", "params": { "prompt": "Fix the login bug" } }
 - "Have Claude add a dark mode toggle" → { "tool": "ask_claude", "params": { "prompt": "Add a dark mode toggle" } }
 - "Ask Claude to refactor the database layer" → { "tool": "ask_claude", "params": { "prompt": "Refactor the database layer" } }
+- "Press enter" → { "tool": "send_key", "params": { "key": "enter" } }
+- "Hit the down arrow" → { "tool": "send_key", "params": { "key": "down" } }
+- "Press escape" → { "tool": "send_key", "params": { "key": "escape" } }
+- "Press Y" → { "tool": "send_key", "params": { "key": "y" } }
+- "Confirm" → { "tool": "send_key", "params": { "key": "y" } }
+- "Go up" → { "tool": "send_key", "params": { "key": "up" } }
+- "Tab" → { "tool": "send_key", "params": { "key": "tab" } }
 - "Yeah that looks good" → { "tool": null, "params": null }
 
 If the speech is a command, respond with ONLY valid JSON:
