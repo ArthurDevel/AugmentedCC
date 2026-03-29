@@ -57,6 +57,12 @@ interface AudioLevelMessage {
   rms: number;
 }
 
+/** Mute state message broadcast to consumer clients. */
+interface MuteStateMessage {
+  type: "mute_state";
+  muted: boolean;
+}
+
 /** State for a single audio producer connection. */
 interface AudioProducerState {
   ffmpeg: ChildProcess;
@@ -244,7 +250,7 @@ async function dispatchInputEvent(cdp: CDPSession, event: InputEvent): Promise<v
  * @param audioConsumers - Set of all connected consumer clients
  * @param voicePipeline - Voice pipeline to feed decoded PCM into (may be null)
  */
-function handleAudioProducer(ws: WebSocket, audioConsumers: Set<WebSocket>, voicePipeline: VoicePipeline | null): void {
+function handleAudioProducer(ws: WebSocket, audioConsumers: Set<WebSocket>, voicePipeline: VoicePipeline | null, isMuted: () => boolean): void {
   const ffmpeg = spawnFfmpegDecoder();
   const state: AudioProducerState = { ffmpeg, latestRms: 0 };
   let wsChunkCount = 0;
@@ -258,7 +264,7 @@ function handleAudioProducer(ws: WebSocket, audioConsumers: Set<WebSocket>, voic
       console.log(`[audio-timing] ffmpeg PCM out #${ffmpegChunkCount} size=${chunk.length} +${Date.now() - producerStartTime}ms`);
     }
     state.latestRms = computeRms(chunk);
-    if (voicePipeline) {
+    if (voicePipeline && !isMuted()) {
       voicePipeline.sendAudio(f32leToLinear16(chunk));
     }
   });
@@ -310,8 +316,29 @@ function handleAudioProducer(ws: WebSocket, audioConsumers: Set<WebSocket>, voic
  * @param ws - The WebSocket connection from a consumer
  * @param audioConsumers - Set of all connected consumer clients
  */
-function handleAudioConsumer(ws: WebSocket, audioConsumers: Set<WebSocket>): void {
+function handleAudioConsumer(
+  ws: WebSocket,
+  audioConsumers: Set<WebSocket>,
+  getMuted: () => boolean,
+  setMuted: (v: boolean) => void,
+): void {
   audioConsumers.add(ws);
+
+  // Send current mute state on connect
+  ws.send(JSON.stringify({ type: "mute_state", muted: getMuted() } satisfies MuteStateMessage));
+
+  ws.on("message", (data) => {
+    try {
+      const msg = JSON.parse(data.toString());
+      if (msg.type === "set_mute" && typeof msg.muted === "boolean") {
+        setMuted(msg.muted);
+        console.log(`[audio] Mic ${msg.muted ? "muted" : "unmuted"}`);
+        // Broadcast new mute state to all consumers
+        const stateMsg: MuteStateMessage = { type: "mute_state", muted: msg.muted };
+        broadcastJson(audioConsumers, stateMsg);
+      }
+    } catch { /* ignore non-JSON */ }
+  });
 
   ws.on("close", () => {
     audioConsumers.delete(ws);
@@ -433,6 +460,9 @@ async function main(): Promise<void> {
   const audioConsumers = new Set<WebSocket>();
   const voiceConsumers = new Set<WebSocket>();
 
+  // Mic mute state — when true, audio is discarded before reaching the voice pipeline
+  let micMuted = false;
+
   // Will be set once Puppeteer is ready
   let cdpSession: CDPSession | null = null;
 
@@ -501,10 +531,10 @@ async function main(): Promise<void> {
 
     if (role === "producer") {
       console.log("[audio] Producer connected");
-      handleAudioProducer(ws, audioConsumers, voicePipeline);
+      handleAudioProducer(ws, audioConsumers, voicePipeline, () => micMuted);
     } else if (role === "consumer") {
       console.log("[audio] Consumer connected");
-      handleAudioConsumer(ws, audioConsumers);
+      handleAudioConsumer(ws, audioConsumers, () => micMuted, (v) => { micMuted = v; });
     } else {
       console.warn("[audio] Unknown role:", role);
       ws.close(1008, "Missing or invalid role query parameter");
