@@ -9,7 +9,7 @@
 // CONSTANTS
 // ============================================================================
 
-export const TOOL_NAMES = ["open_terminal", "open_browser", "close_window", "run_command"] as const;
+export const TOOL_NAMES = ["open_terminal", "open_browser", "close_window", "run_command", "ask_claude"] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
 
@@ -33,7 +33,11 @@ export interface RunCommandParams {
   command: string;
 }
 
-export type ToolParams = OpenTerminalParams | OpenBrowserParams | CloseWindowParams | RunCommandParams;
+export interface AskClaudeParams {
+  prompt: string;
+}
+
+export type ToolParams = OpenTerminalParams | OpenBrowserParams | CloseWindowParams | RunCommandParams | AskClaudeParams;
 
 /** Parsed tool call from the LLM. null tool means the transcript was not a command. */
 export interface ToolCall {
