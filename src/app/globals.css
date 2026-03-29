@@ -79,6 +79,7 @@ body {
 /* Panels container */
 .panels-container {
   flex: 1;
+  min-height: 0;
   display: flex;
   gap: 12px;
   padding: 12px;
@@ -104,6 +105,8 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(30, 30, 30, 0.92);
   min-width: 200px;
+  /* Let flex children (e.g. .panel-terminal) shrink and receive a real height for xterm FitAddon */
+  min-height: 0;
 }
 
 .panel-header {
@@ -144,6 +147,22 @@ body {
   border: none;
   width: 100%;
   background: #fff;
+}
+
+.panel-terminal {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+  background: #1a1b26;
+}
+
+/* xterm fills the flex terminal slot (FitAddon uses this element's clientWidth/Height) */
+.panel-terminal .xterm {
+  position: absolute;
+  inset: 0;
 }
 
 /* ============================================================================
