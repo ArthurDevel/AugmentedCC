@@ -312,14 +312,6 @@ export default function DesktopPage() {
 
   return (
     <div className="desktop-root">
-      <Toolbar
-        onAdd={addPanel}
-        onRemoveLast={removeLast}
-        onAddShell={addShell}
-        onAddClaude={addClaude}
-        panelCount={panels.length}
-      />
-
       <div className="panels-container">
         {totalCount === 0 && (
           <div className="empty-state">
@@ -349,6 +341,11 @@ export default function DesktopPage() {
       </div>
 
       <div className="bottom-controls">
+        <button className="bottom-control-button" onClick={addPanel} disabled={panels.length >= MAX_PANELS}>+ Add Panel</button>
+        <button className="bottom-control-button" onClick={removeLast} disabled={panels.length === 0}>- Remove Panel</button>
+        <button className="bottom-control-button" onClick={addShell}>+ Shell</button>
+        <button className="bottom-control-button" onClick={addClaude}>+ Claude</button>
+        <span className="bottom-control-count">{panels.length} / {MAX_PANELS}</span>
         <MicMuteButton muted={micMuted} onToggle={toggleMute} />
         <button
           type="button"
@@ -368,40 +365,6 @@ export default function DesktopPage() {
         <VoiceDebugWindow entries={debugEntries} onClear={clearDebugEntries} audioLevel={audioLevel} interim={interimText} onSend={sendSimulatedText} />
       )}
       <AudioMeter level={audioLevel} />
-    </div>
-  );
-}
-
-// ============================================================================
-// TOOLBAR
-// ============================================================================
-
-function Toolbar({
-  onAdd,
-  onRemoveLast,
-  onAddShell,
-  onAddClaude,
-  panelCount,
-}: {
-  onAdd: () => void;
-  onRemoveLast: () => void;
-  onAddShell: () => void;
-  onAddClaude: () => void;
-  panelCount: number;
-}) {
-  return (
-    <div className="toolbar">
-      <button onClick={onAdd} disabled={panelCount >= MAX_PANELS}>
-        + Add Panel
-      </button>
-      <button onClick={onRemoveLast} disabled={panelCount === 0}>
-        - Remove Panel
-      </button>
-      <button onClick={onAddShell}>+ Shell</button>
-      <button onClick={onAddClaude}>+ Claude</button>
-      <span className="panel-count">
-        {panelCount} / {MAX_PANELS}
-      </span>
     </div>
   );
 }
