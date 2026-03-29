@@ -104,10 +104,15 @@ function computeRms(data: Buffer): number {
 function spawnFfmpegDecoder(): ChildProcess {
   return spawn("ffmpeg", [
     "-loglevel", "error",
+    "-fflags", "nobuffer",
+    "-flags", "low_delay",
+    "-probesize", "32",
+    "-analyzeduration", "0",
     "-i", "pipe:0",
     "-f", "f32le",
     "-ar", String(AUDIO_SAMPLE_RATE),
     "-ac", String(AUDIO_CHANNELS),
+    "-flush_packets", "1",
     "pipe:1",
   ], {
     stdio: ["pipe", "pipe", "pipe"],
@@ -138,7 +143,7 @@ function f32leToLinear16(f32buf: Buffer): Buffer {
 function broadcastJson(clients: Set<WebSocket>, message: object): void {
   const payload = JSON.stringify(message);
   for (const client of clients) {
-    if (client.readyState === WebSocket.OPEN) {
+    if (client.readyState === WebSocket.OPEN && client.bufferedAmount < 65536) {
       client.send(payload);
     }
   }
@@ -247,7 +252,6 @@ async function dispatchInputEvent(cdp: CDPSession, event: InputEvent): Promise<v
 function handleAudioProducer(ws: WebSocket, audioConsumers: Set<WebSocket>, voicePipeline: VoicePipeline | null): void {
   const ffmpeg = spawnFfmpegDecoder();
   const state: AudioProducerState = { ffmpeg, latestRms: 0 };
-
   // Read PCM output from ffmpeg, compute RMS, feed voice pipeline
   ffmpeg.stdout!.on("data", (chunk: Buffer) => {
     state.latestRms = computeRms(chunk);
@@ -313,6 +317,9 @@ function handleAudioConsumer(ws: WebSocket, audioConsumers: Set<WebSocket>): voi
  * @param cdpSession - Chrome DevTools Protocol session
  * @param screencastClients - Set of all connected screencast clients
  */
+const TARGET_FPS = 15;
+const FRAME_INTERVAL_MS = Math.floor(1000 / TARGET_FPS);
+
 async function runScreenshotLoop(
   cdpSession: CDPSession,
   screencastClients: Set<WebSocket>,
@@ -320,9 +327,10 @@ async function runScreenshotLoop(
   let lastBase64 = "";
 
   while (true) {
+    const frameStart = Date.now();
+
     try {
       if (screencastClients.size === 0) {
-        // No clients connected, sleep briefly to avoid busy-waiting
         await new Promise((resolve) => setTimeout(resolve, 100));
         continue;
       }
@@ -333,18 +341,19 @@ async function runScreenshotLoop(
       } as Record<string, unknown>);
 
       // Skip identical frames
-      if (result.data === lastBase64) {
-        continue;
+      if (result.data !== lastBase64) {
+        lastBase64 = result.data;
+        const pngBuffer = Buffer.from(result.data, "base64");
+        broadcastBinary(screencastClients, pngBuffer);
       }
-      lastBase64 = result.data;
-
-      const pngBuffer = Buffer.from(result.data, "base64");
-      broadcastBinary(screencastClients, pngBuffer);
     } catch (err) {
       console.error("[screenshot] Capture failed:", err);
-      // Brief pause before retrying to avoid tight error loop
-      await new Promise((resolve) => setTimeout(resolve, 500));
     }
+
+    // Cap at TARGET_FPS — sleep for the remainder of the frame budget
+    const elapsed = Date.now() - frameStart;
+    const sleepMs = Math.max(FRAME_INTERVAL_MS - elapsed, 1);
+    await new Promise((resolve) => setTimeout(resolve, sleepMs));
   }
 }
 

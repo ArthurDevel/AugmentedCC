@@ -26,10 +26,15 @@ type EventListener = (event: VoiceEvent) => void;
 // MAIN CLASS
 // ============================================================================
 
+const INTERIM_THROTTLE_MS = 200;
+
 export class VoicePipeline {
   private deepgram: DeepgramClient;
   private openRouterApiKey: string;
   private listeners: Set<EventListener> = new Set();
+  private lastInterimBroadcast = 0;
+  private pendingInterim: TranscriptEvent | null = null;
+  private interimTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(config: PipelineConfig) {
     this.openRouterApiKey = config.openRouterApiKey;
@@ -101,10 +106,35 @@ export class VoicePipeline {
       isFinal,
       timestamp: Date.now(),
     };
-    this.broadcast(transcriptEvent);
 
-    // Only parse final transcripts for commands
-    if (!isFinal) return;
+    if (!isFinal) {
+      // Throttle interim broadcasts to avoid flooding consumers
+      this.pendingInterim = transcriptEvent;
+      const now = Date.now();
+      if (now - this.lastInterimBroadcast >= INTERIM_THROTTLE_MS) {
+        this.lastInterimBroadcast = now;
+        this.broadcast(transcriptEvent);
+        this.pendingInterim = null;
+      } else if (!this.interimTimer) {
+        this.interimTimer = setTimeout(() => {
+          this.interimTimer = null;
+          if (this.pendingInterim) {
+            this.lastInterimBroadcast = Date.now();
+            this.broadcast(this.pendingInterim);
+            this.pendingInterim = null;
+          }
+        }, INTERIM_THROTTLE_MS);
+      }
+      return;
+    }
+
+    // Final transcript — flush any pending interim and broadcast final
+    if (this.interimTimer) {
+      clearTimeout(this.interimTimer);
+      this.interimTimer = null;
+    }
+    this.pendingInterim = null;
+    this.broadcast(transcriptEvent);
 
     console.log(`[voice] final transcript: "${text}"`);
 
