@@ -9,7 +9,7 @@
 import { DeepgramClient } from "./deepgramClient";
 import { parseCommand } from "./commandParser";
 import { executeTool } from "./toolExecutor";
-import { VoiceEvent, TranscriptEvent, ToolCallEvent } from "./types";
+import { VoiceEvent, TranscriptEvent, ToolCallEvent, LlmResponseEvent } from "./types";
 
 // ============================================================================
 // TYPES
@@ -42,11 +42,11 @@ export class VoicePipeline {
   }
 
   /**
-   * Starts the voice pipeline by connecting to Deepgram.
+   * Starts the voice pipeline. Deepgram connection is deferred until
+   * the first audio chunk arrives to avoid idle timeouts.
    */
   start(): void {
-    console.log("[voice] starting pipeline");
-    this.deepgram.connect();
+    console.log("[voice] pipeline ready (Deepgram connects on first audio)");
   }
 
   /**
@@ -59,9 +59,18 @@ export class VoicePipeline {
 
   /**
    * Feeds raw PCM audio into the pipeline.
+   * Lazily connects to Deepgram on the first call.
    * @param audio - Buffer of linear16 PCM audio at 16kHz mono
    */
   sendAudio(audio: Buffer): void {
+    if (!this.deepgram.isConnected()) {
+      // Fire-and-forget — audio before connection opens is dropped,
+      // which is fine since it's just the first ~1s of silence/noise.
+      this.deepgram.connect().catch((err) => {
+        console.error("[voice] Deepgram connect error:", err);
+      });
+      return;
+    }
     this.deepgram.sendAudio(audio);
   }
 
@@ -100,11 +109,18 @@ export class VoicePipeline {
     console.log(`[voice] final transcript: "${text}"`);
 
     try {
-      const toolCall = await parseCommand(text, this.openRouterApiKey);
+      const result = await parseCommand(text, this.openRouterApiKey);
 
-      if (toolCall.tool !== null) {
-        console.log(`[voice] parsed command: ${toolCall.tool}`);
-        executeTool(toolCall, {
+      const llmEvent: LlmResponseEvent = {
+        type: "llm_response",
+        raw: result.raw,
+        timestamp: Date.now(),
+      };
+      this.broadcast(llmEvent);
+
+      if (result.tool !== null) {
+        console.log(`[voice] parsed command: ${result.tool}`);
+        executeTool(result, {
           onToolCall: (event: ToolCallEvent) => this.broadcast(event),
         });
       }

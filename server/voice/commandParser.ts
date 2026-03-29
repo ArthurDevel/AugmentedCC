@@ -15,16 +15,20 @@ import { ToolCall, ToolName, TOOL_NAMES } from "./types";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_MODEL = "google/gemini-2.0-flash-001";
 
-const SYSTEM_PROMPT = `You are a voice command parser for a VR desktop with multiple browser sessions.
+const SYSTEM_PROMPT = `You are a voice command parser for a developer's AR workspace.
 You receive transcribed speech and determine if it is a command.
 
 Available tools:
-1. open_session - Opens a new browser session. Params: { "url": string }
-2. send_message_to_session - Types a message into a session's input box. Params: { "sessionId": string, "message": string }
-3. set_active_session - Switches focus to a session. Params: { "sessionId": string }
+1. start_new_coding_session - Starts a new coding agent session. Params: { "task": string }
+   The task is a description of what the user wants to build or fix.
+2. open_terminal - Opens a terminal window. Params: { "command"?: string }
+   Optionally runs a command in the terminal.
 
-Session IDs are: session_1, session_2, session_3 (positional, left to right).
-Users may refer to them as "first", "second", "third", "one", "two", "three", etc.
+Examples:
+- "Start a new session to build a login page" → { "tool": "start_new_coding_session", "params": { "task": "build a login page" } }
+- "Open a terminal" → { "tool": "open_terminal", "params": {} }
+- "Open a terminal and run npm install" → { "tool": "open_terminal", "params": { "command": "npm install" } }
+- "Yeah that looks good" → { "tool": null, "params": null }
 
 If the speech is a command, respond with ONLY valid JSON:
 { "tool": "<tool_name>", "params": { ... } }
@@ -61,12 +65,13 @@ interface OpenRouterResponse {
  * @param apiKey - OpenRouter API key
  * @returns parsed ToolCall, or { tool: null, params: null } if not a command
  */
-export async function parseCommand(transcript: string, apiKey: string): Promise<ToolCall> {
+export async function parseCommand(transcript: string, apiKey: string): Promise<ToolCall & { raw: string }> {
   const messages: OpenRouterMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     { role: "user", content: transcript },
   ];
 
+  console.log(`[voice] calling OpenRouter for: "${transcript}"`);
   const response = await fetch(OPENROUTER_URL, {
     method: "POST",
     headers: {
@@ -88,12 +93,13 @@ export async function parseCommand(transcript: string, apiKey: string): Promise<
 
   const data: OpenRouterResponse = await response.json();
   const content = data.choices[0]?.message?.content;
+  console.log(`[voice] OpenRouter response: ${content}`);
 
   if (!content) {
     throw new Error("OpenRouter returned empty response");
   }
 
-  return parseToolCallJson(content);
+  return { ...parseToolCallJson(content), raw: content };
 }
 
 // ============================================================================
