@@ -54,7 +54,7 @@ function resolvePath(p: string): string {
   return path.resolve(p);
 }
 
-function createTerminal(profile: TerminalProfile, cwd?: string): string {
+function createTerminal(profile: TerminalProfile, cwd?: string, resumeSessionId?: string): string {
   const id = generateId();
   const shell = process.env.SHELL ?? "/bin/zsh";
   const defaultDir = resolvePath("~/.augmentedCC/project");
@@ -75,8 +75,11 @@ function createTerminal(profile: TerminalProfile, cwd?: string): string {
   });
 
   if (profile === "claude") {
+    const claudeCmd = resumeSessionId
+      ? `claude --resume ${resumeSessionId} --dangerously-skip-permissions`
+      : "claude --dangerously-skip-permissions";
     setTimeout(() => {
-      ptyProcess.write("claude --dangerously-skip-permissions\r");
+      ptyProcess.write(claudeCmd + "\r");
     }, 300);
     setTimeout(() => {
       ptyProcess.write("yes\r");
@@ -155,9 +158,9 @@ export async function handleTerminalHttp(
   // POST /api/terminals — create
   if (method === "POST" && pathname === "/api/terminals") {
     const body = await readBody(req);
-    const parsed = JSON.parse(body || "{}") as { profile?: string; cwd?: string };
+    const parsed = JSON.parse(body || "{}") as { profile?: string; cwd?: string; resumeSessionId?: string };
     const profile = (parsed.profile === "claude" ? "claude" : "shell") as TerminalProfile;
-    const id = createTerminal(profile, parsed.cwd);
+    const id = createTerminal(profile, parsed.cwd, parsed.resumeSessionId);
     jsonResponse(res, 201, { id });
     return true;
   }
