@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["*"],
-  serverExternalPackages: ["puppeteer"],
+  serverExternalPackages: ["puppeteer", "node-pty"],
 };
 
 export default nextConfig;
