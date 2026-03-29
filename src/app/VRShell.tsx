@@ -256,11 +256,24 @@ export default function VRShell(): React.JSX.Element {
     // ── Microphone capture → audio WebSocket ────────────────────────────
     let audioWs: WebSocket | null = null;
     let mediaRecorder: MediaRecorder | null = null;
+    let micStarted = false;
 
     async function startMic() {
+      if (micStarted) {
+        dbg("startMic called again, skipping (already started)");
+        return;
+      }
+      micStarted = true;
+
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         dbg("Mic access granted");
+
+        // If cleanup ran while we were awaiting mic permission, abort
+        if (disposed) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
 
         const audioUrl = getWsUrl("/ws/audio?role=producer");
         audioWs = new WebSocket(audioUrl);
@@ -272,13 +285,18 @@ export default function VRShell(): React.JSX.Element {
             mimeType: "audio/webm;codecs=opus",
             audioBitsPerSecond: 64000,
           });
+          let chunkCount = 0;
           mediaRecorder.ondataavailable = (ev) => {
             if (ev.data.size > 0 && audioWs?.readyState === WebSocket.OPEN) {
+              chunkCount++;
+              if (chunkCount <= 5 || chunkCount % 50 === 0) {
+                dbg(`[audio-timing] chunk #${chunkCount} size=${ev.data.size} t=${Date.now()}`);
+              }
               ev.data.arrayBuffer().then((buf) => audioWs!.send(buf));
             }
           };
           mediaRecorder.start(100);
-          dbg("MediaRecorder started");
+          dbg(`MediaRecorder started t=${Date.now()}`);
         };
 
         audioWs.onclose = () => { dbg("Audio WS closed"); };

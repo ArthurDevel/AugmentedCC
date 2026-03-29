@@ -83,10 +83,12 @@ export class DeepgramClient {
         sample_rate: 16000,
       });
 
+      const connectStartTime = Date.now();
+
       socket.on("open", () => {
         this.connected = true;
         this.reconnectAttempts = 0;
-        console.log("[deepgram] connected (Flux)");
+        console.log(`[deepgram-timing] connected (Flux) in ${Date.now() - connectStartTime}ms`);
       });
 
       socket.on("message", (data: FluxMessage) => {
@@ -119,8 +121,19 @@ export class DeepgramClient {
     }
   }
 
+  private audioChunkCount = 0;
+  private firstAudioSentTime = 0;
+
   sendAudio(audio: Buffer): void {
     if (this.connected && this.socket) {
+      this.audioChunkCount++;
+      if (this.audioChunkCount === 1) {
+        this.firstAudioSentTime = Date.now();
+        console.log(`[deepgram-timing] first audio chunk sent to Deepgram t=${this.firstAudioSentTime}`);
+      }
+      if (this.audioChunkCount <= 5 || this.audioChunkCount % 100 === 0) {
+        console.log(`[deepgram-timing] sendAudio #${this.audioChunkCount} +${Date.now() - this.firstAudioSentTime}ms`);
+      }
       this.socket.sendMedia(audio);
     }
   }
@@ -166,18 +179,21 @@ export class DeepgramClient {
 
     const turn = data as FluxTurnInfo;
 
+    const now = Date.now();
+    const sinceFirstAudio = this.firstAudioSentTime > 0 ? `+${now - this.firstAudioSentTime}ms` : "no-audio-yet";
+
     if (turn.event === "StartOfTurn") {
-      console.log(`[deepgram] StartOfTurn (turn ${turn.turn_index})`);
+      console.log(`[deepgram-timing] StartOfTurn (turn ${turn.turn_index}) t=${now} ${sinceFirstAudio}`);
     }
 
     if (turn.transcript) {
       const isFinal = turn.event === "EndOfTurn" || turn.event === "EagerEndOfTurn";
-      console.log(`[deepgram] ${turn.event}: "${turn.transcript}"`);
+      console.log(`[deepgram-timing] ${turn.event}: "${turn.transcript}" t=${now} ${sinceFirstAudio}`);
       this.config.onTranscript(turn.transcript, isFinal);
     }
 
     if (turn.event === "EndOfTurn") {
-      console.log(`[deepgram] EndOfTurn (turn ${turn.turn_index}, confidence=${turn.end_of_turn_confidence})`);
+      console.log(`[deepgram-timing] EndOfTurn (turn ${turn.turn_index}, confidence=${turn.end_of_turn_confidence}) t=${now} ${sinceFirstAudio}`);
     }
   }
 }

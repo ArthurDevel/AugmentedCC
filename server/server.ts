@@ -247,9 +247,16 @@ async function dispatchInputEvent(cdp: CDPSession, event: InputEvent): Promise<v
 function handleAudioProducer(ws: WebSocket, audioConsumers: Set<WebSocket>, voicePipeline: VoicePipeline | null): void {
   const ffmpeg = spawnFfmpegDecoder();
   const state: AudioProducerState = { ffmpeg, latestRms: 0 };
+  let wsChunkCount = 0;
+  let ffmpegChunkCount = 0;
+  const producerStartTime = Date.now();
 
   // Read PCM output from ffmpeg, compute RMS, feed voice pipeline
   ffmpeg.stdout!.on("data", (chunk: Buffer) => {
+    ffmpegChunkCount++;
+    if (ffmpegChunkCount <= 5 || ffmpegChunkCount % 50 === 0) {
+      console.log(`[audio-timing] ffmpeg PCM out #${ffmpegChunkCount} size=${chunk.length} +${Date.now() - producerStartTime}ms`);
+    }
     state.latestRms = computeRms(chunk);
     if (voicePipeline) {
       voicePipeline.sendAudio(f32leToLinear16(chunk));
@@ -280,6 +287,10 @@ function handleAudioProducer(ws: WebSocket, audioConsumers: Set<WebSocket>, voic
   ws.on("message", (data) => {
     if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
       const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+      wsChunkCount++;
+      if (wsChunkCount <= 5 || wsChunkCount % 50 === 0) {
+        console.log(`[audio-timing] ws chunk in #${wsChunkCount} size=${buf.length} +${Date.now() - producerStartTime}ms`);
+      }
       if (ffmpeg.stdin!.writable) {
         ffmpeg.stdin!.write(buf);
       }
@@ -287,6 +298,7 @@ function handleAudioProducer(ws: WebSocket, audioConsumers: Set<WebSocket>, voic
   });
 
   ws.on("close", () => {
+    console.log(`[audio-timing] producer closed after ${wsChunkCount} ws chunks, ${ffmpegChunkCount} ffmpeg chunks, ${Date.now() - producerStartTime}ms`);
     clearInterval(broadcastInterval);
     ffmpeg.stdin!.end();
     ffmpeg.kill("SIGTERM");
