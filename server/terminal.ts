@@ -8,6 +8,7 @@
 
 import { type IncomingMessage, type ServerResponse } from "http";
 import { type Duplex } from "stream";
+import * as path from "path";
 import * as pty from "node-pty";
 import { WebSocketServer, WebSocket } from "ws";
 
@@ -46,10 +47,18 @@ function filteredEnv(): Record<string, string> {
   return env;
 }
 
+function resolvePath(p: string): string {
+  if (p.startsWith("~/") || p === "~") {
+    return path.join(process.env.HOME ?? "/", p.slice(1));
+  }
+  return path.resolve(p);
+}
+
 function createTerminal(profile: TerminalProfile, cwd?: string): string {
   const id = generateId();
   const shell = process.env.SHELL ?? "/bin/zsh";
-  const workingDir = cwd ?? process.env.HOME ?? "/";
+  const defaultDir = profile === "claude" ? process.cwd() : process.env.HOME ?? "/";
+  const workingDir = cwd ? resolvePath(cwd) : defaultDir;
 
   const ptyProcess = pty.spawn(shell, [], {
     name: "xterm-256color",
@@ -67,7 +76,7 @@ function createTerminal(profile: TerminalProfile, cwd?: string): string {
 
   if (profile === "claude") {
     setTimeout(() => {
-      ptyProcess.write("claude\r");
+      ptyProcess.write("claude --dangerously-skip-permissions\r");
     }, 300);
   }
 
