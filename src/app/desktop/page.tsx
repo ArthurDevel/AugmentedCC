@@ -64,10 +64,13 @@ export default function DesktopPage() {
   const [panels, setPanels] = useState<Panel[]>([]);
   const [terminalPanes, setTerminalPanes] = useState<TerminalPaneDescriptor[]>([]);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [micMuted, setMicMuted] = useState(false);
   const [debugEntries, setDebugEntries] = useState<VoiceDebugEntry[]>([]);
+  const [debugVisible, setDebugVisible] = useState(true);
   const [interimText, setInterimText] = useState("");
   const [focusedWindowId, setFocusedWindowId] = useState<string | null>(null);
   const nextEntryId = useRef(0);
+  const audioWsRef = useRef<WebSocket | null>(null);
 
   // Connect to /ws/voice to receive VoiceEvents (transcripts, tool calls, errors)
   // Also used bidirectionally to send simulated text input
@@ -203,16 +206,23 @@ export default function DesktopPage() {
       if (disposed) return;
       ws = new WebSocket(url);
 
+      ws.onopen = () => {
+        audioWsRef.current = ws;
+      };
+
       ws.onmessage = (ev) => {
         try {
           const msg = JSON.parse(ev.data);
           if (msg.type === "level" && typeof msg.rms === "number") {
             setAudioLevel(msg.rms);
+          } else if (msg.type === "mute_state" && typeof msg.muted === "boolean") {
+            setMicMuted(msg.muted);
           }
         } catch { /* ignore non-JSON */ }
       };
 
       ws.onclose = () => {
+        audioWsRef.current = null;
         ws = null;
         if (!disposed) {
           reconnectTimer = setTimeout(connect, 2000);
@@ -226,10 +236,18 @@ export default function DesktopPage() {
 
     return () => {
       disposed = true;
+      audioWsRef.current = null;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       ws?.close();
     };
   }, []);
+
+  const toggleMute = useCallback(() => {
+    const ws = audioWsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "set_mute", muted: !micMuted }));
+    }
+  }, [micMuted]);
 
   const clearDebugEntries = useCallback(() => {
     setDebugEntries([]);
@@ -330,7 +348,25 @@ export default function DesktopPage() {
         ))}
       </div>
 
-      <VoiceDebugWindow entries={debugEntries} onClear={clearDebugEntries} audioLevel={audioLevel} interim={interimText} onSend={sendSimulatedText} />
+      <div className="bottom-controls">
+        <MicMuteButton muted={micMuted} onToggle={toggleMute} />
+        <button
+          type="button"
+          className={`debug-toggle-button ${debugVisible ? "" : "debug-toggle-button--hidden"}`}
+          onClick={() => setDebugVisible((v) => !v)}
+          title={debugVisible ? "Hide voice debug" : "Show voice debug"}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" />
+            <circle cx="12" cy="12" r="3" />
+            {!debugVisible && <line x1="1" y1="1" x2="23" y2="23" />}
+          </svg>
+          <span className="debug-toggle-label">{debugVisible ? "DEBUG" : "DEBUG OFF"}</span>
+        </button>
+      </div>
+      {debugVisible && (
+        <VoiceDebugWindow entries={debugEntries} onClear={clearDebugEntries} audioLevel={audioLevel} interim={interimText} onSend={sendSimulatedText} />
+      )}
       <AudioMeter level={audioLevel} />
     </div>
   );
@@ -653,6 +689,30 @@ const TerminalXterm = ({ terminalId, initialCommand }: { terminalId: string; ini
 
   return <div ref={containerRef} className="panel-terminal" />;
 };
+
+// ============================================================================
+// MIC MUTE BUTTON
+// ============================================================================
+
+function MicMuteButton({ muted, onToggle }: { muted: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`mic-mute-button ${muted ? "mic-mute-button--muted" : ""}`}
+      onClick={onToggle}
+      title={muted ? "Unmute microphone" : "Mute microphone"}
+    >
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="9" y="1" width="6" height="11" rx="3" />
+        <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+        <line x1="12" y1="19" x2="12" y2="23" />
+        <line x1="8" y1="23" x2="16" y2="23" />
+        {muted && <line x1="1" y1="1" x2="23" y2="23" />}
+      </svg>
+      <span className="mic-mute-label">{muted ? "MUTED" : "MIC ON"}</span>
+    </button>
+  );
+}
 
 // ============================================================================
 // VOICE DEBUG WINDOW
