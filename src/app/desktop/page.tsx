@@ -34,7 +34,7 @@ interface Panel {
 
 interface VoiceDebugEntry {
   id: number;
-  type: "transcript" | "tool_call" | "error";
+  type: "transcript" | "tool_call" | "llm_response" | "error";
   text: string;
   timestamp: number;
 }
@@ -118,10 +118,12 @@ function VoiceDebugWindow({
   entries,
   onClear,
   audioLevel,
+  interim,
 }: {
   entries: VoiceDebugEntry[];
   onClear: () => void;
   audioLevel: number;
+  interim: string;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
@@ -184,19 +186,16 @@ function VoiceDebugWindow({
     switch (type) {
       case "transcript": return "debug-entry--transcript";
       case "tool_call": return "debug-entry--tool";
+      case "llm_response": return "debug-entry--llm";
       case "error": return "debug-entry--error";
     }
   };
 
-  /**
-   * Returns a label prefix for the entry type.
-   * @param type - the entry type
-   * @returns label string
-   */
   const typeLabel = (type: VoiceDebugEntry["type"]): string => {
     switch (type) {
       case "transcript": return "STT";
       case "tool_call": return "CMD";
+      case "llm_response": return "LLM";
       case "error": return "ERR";
     }
   };
@@ -242,6 +241,13 @@ function VoiceDebugWindow({
               <span className="debug-entry-text">{entry.text}</span>
             </div>
           ))}
+          {interim && (
+            <div className="debug-entry debug-entry--interim">
+              <span className="debug-entry-time">{formatTime(Date.now())}</span>
+              <span className="debug-entry-label">...</span>
+              <span className="debug-entry-text">{interim}</span>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -274,6 +280,7 @@ export default function DesktopPage() {
   const [panels, setPanels] = useState<Panel[]>([]);
   const [audioLevel, setAudioLevel] = useState(0);
   const [debugEntries, setDebugEntries] = useState<VoiceDebugEntry[]>([]);
+  const [interimText, setInterimText] = useState("");
   const nextEntryId = useRef(0);
 
   // Connect to /ws/voice to receive VoiceEvents (transcripts, tool calls, errors)
@@ -292,11 +299,18 @@ export default function DesktopPage() {
         try {
           const event = JSON.parse(ev.data);
           let text = "";
+          const type = event.type;
           if (event.type === "transcript") {
-            if (!event.isFinal) return; // only show final transcripts
+            if (!event.isFinal) {
+              setInterimText(event.text ?? "");
+              return;
+            }
+            setInterimText("");
             text = event.text;
           } else if (event.type === "tool_call") {
             text = `${event.tool}(${JSON.stringify(event.params)})`;
+          } else if (event.type === "llm_response") {
+            text = event.raw;
           } else if (event.type === "error") {
             text = event.message;
           } else {
@@ -305,7 +319,7 @@ export default function DesktopPage() {
 
           const entry: VoiceDebugEntry = {
             id: nextEntryId.current++,
-            type: event.type,
+            type,
             text,
             timestamp: event.timestamp ?? Date.now(),
           };
@@ -404,7 +418,7 @@ export default function DesktopPage() {
         ))}
       </div>
 
-      <VoiceDebugWindow entries={debugEntries} onClear={clearDebugEntries} audioLevel={audioLevel} />
+      <VoiceDebugWindow entries={debugEntries} onClear={clearDebugEntries} audioLevel={audioLevel} interim={interimText} />
       <AudioMeter level={audioLevel} />
     </div>
   );
