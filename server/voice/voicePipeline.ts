@@ -7,9 +7,9 @@
  */
 
 import { DeepgramClient } from "./deepgramClient";
-import { parseCommand } from "./commandParser";
-import { executeTool } from "./toolExecutor";
-import { VoiceEvent, TranscriptEvent, ToolCallEvent, LlmResponseEvent } from "./types";
+import { parseCommand } from "../ai/commandParser";
+import { executeTool } from "../ai/toolExecutor";
+import type { VoiceEvent, TranscriptEvent, ToolCallEvent, LlmResponseEvent } from "./types";
 
 // ============================================================================
 // TYPES

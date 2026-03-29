@@ -1,12 +1,12 @@
 /**
- * Executes parsed voice tool calls.
+ * Executes parsed tool calls.
  *
  * - Receives a ToolCall from the command parser
  * - Logs the execution (actual side effects will be wired later)
  * - Broadcasts the tool call event to debug consumers
  */
 
-import {
+import type {
   ToolCall,
   ToolCallEvent,
   StartNewCodingSessionParams,
