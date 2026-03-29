@@ -104,14 +104,13 @@ export default function DesktopPage() {
         return [...prev, { id: generateId(), url }];
       });
     } else if (tool === "open_terminal") {
-      const cwd = typeof params.cwd === "string" ? params.cwd : "";
       const command = typeof params.command === "string" ? params.command : undefined;
       const paneId = generateId();
 
       const res = await fetch("/api/terminals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile: "shell", cwd: cwd || undefined }),
+        body: JSON.stringify({ profile: "shell" }),
       });
       if (!res.ok) {
         console.error(`[tool] Failed to create terminal: ${res.status}`);
@@ -122,8 +121,30 @@ export default function DesktopPage() {
       setTerminalPanes((prev) => [...prev, { id: paneId, terminalId, profile: "shell", initialCommand: command }]);
     } else if (tool === "close_window") {
       closeFocusedWindow();
+    } else if (tool === "run_command" && typeof params.command === "string") {
+      const command = params.command;
+
+      // Find a terminal to write to: prefer focused terminal, fall back to the last one
+      const focusedPane = focusedWindowId
+        ? terminalPanes.find((p) => p.id === focusedWindowId && p.terminalId)
+        : null;
+      const targetPane = focusedPane ?? [...terminalPanes].reverse().find((p) => p.terminalId);
+
+      if (!targetPane?.terminalId) {
+        console.warn("[tool] run_command: no terminal available to run command in");
+        return;
+      }
+
+      const res = await fetch(`/api/terminals/${targetPane.terminalId}/write`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: command + "\r" }),
+      });
+      if (!res.ok) {
+        console.error(`[tool] run_command: write failed (${res.status})`);
+      }
     }
-  }, [closeFocusedWindow]);
+  }, [closeFocusedWindow, focusedWindowId, terminalPanes]);
 
   useEffect(() => {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";

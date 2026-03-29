@@ -111,8 +111,8 @@ body {
 }
 
 .iframe-panel--focused {
-  border-color: #f97316;
-  border-width: 3px;
+  outline: 3px solid #f97316;
+  outline-offset: -3px;
 }
 
 .panel-header {

@@ -57,7 +57,7 @@ function resolvePath(p: string): string {
 function createTerminal(profile: TerminalProfile, cwd?: string): string {
   const id = generateId();
   const shell = process.env.SHELL ?? "/bin/zsh";
-  const defaultDir = profile === "claude" ? process.cwd() : process.env.HOME ?? "/";
+  const defaultDir = resolvePath("~/.augmentedCC/project");
   const workingDir = cwd ? resolvePath(cwd) : defaultDir;
 
   const ptyProcess = pty.spawn(shell, [], {
@@ -97,6 +97,13 @@ function resizeTerminal(id: string, cols: number, rows: number): boolean {
   const session = terminals.get(id);
   if (!session) return false;
   session.pty.resize(cols, rows);
+  return true;
+}
+
+function writeTerminal(id: string, data: string): boolean {
+  const session = terminals.get(id);
+  if (!session) return false;
+  session.pty.write(data);
   return true;
 }
 
@@ -173,6 +180,16 @@ export async function handleTerminalHttp(
     const { cols, rows } = JSON.parse(body) as { cols: number; rows: number };
     const resized = resizeTerminal(resizeMatch[1], cols, rows);
     jsonResponse(res, resized ? 200 : 404, { ok: resized });
+    return true;
+  }
+
+  // POST /api/terminals/:id/write
+  const writeMatch = pathname.match(/^\/api\/terminals\/([^/]+)\/write$/);
+  if (method === "POST" && writeMatch) {
+    const body = await readBody(req);
+    const { data } = JSON.parse(body) as { data: string };
+    const written = writeTerminal(writeMatch[1], data);
+    jsonResponse(res, written ? 200 : 404, { ok: written });
     return true;
   }
 
