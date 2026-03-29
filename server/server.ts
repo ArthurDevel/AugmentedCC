@@ -21,6 +21,7 @@ import next from "next";
 import puppeteer, { type Browser, type Page, type CDPSession } from "puppeteer";
 import { WebSocketServer, WebSocket } from "ws";
 import { VoicePipeline } from "./voice/voicePipeline";
+import { handleTerminalHttp, handleTerminalUpgrade } from "./terminal.js";
 
 // ============================================================================
 // CONSTANTS
@@ -405,7 +406,8 @@ async function main(): Promise<void> {
   await nextApp.prepare();
 
   // Create HTTPS server
-  const httpsServer: Server = createHttpsServer({ cert, key }, (req, res) => {
+  const httpsServer: Server = createHttpsServer({ cert, key }, async (req, res) => {
+    if (await handleTerminalHttp(req, res)) return;
     nextHandler(req, res);
   });
 
@@ -465,6 +467,9 @@ async function main(): Promise<void> {
       voiceWss.handleUpgrade(request, socket, head, (ws) => {
         voiceWss.emit("connection", ws, request);
       });
+    } else if (pathname.startsWith("/ws/terminal/")) {
+      const terminalId = pathname.slice("/ws/terminal/".length);
+      handleTerminalUpgrade(request, socket, head, terminalId);
     } else {
       // Not a recognized WS endpoint, let Next.js handle (e.g. HMR)
       // Do nothing — socket will be handled by Next.js internally

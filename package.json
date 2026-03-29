@@ -2,6 +2,9 @@
   "name": "conductor-playground",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "tsx --env-file=.env.local server/server.ts",
     "dev:next": "next dev",
@@ -11,7 +14,11 @@
   },
   "dependencies": {
     "@deepgram/sdk": "^5.0.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-webgl": "^0.19.0",
+    "@xterm/xterm": "^6.0.0",
     "next": "16.2.1",
+    "node-pty": "^1.1.0",
     "puppeteer": "^24.40.0",
     "qrcode": "^1.5.4",
     "react": "19.2.4",
@@ -32,5 +39,8 @@
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["node-pty"]
   }
 }
