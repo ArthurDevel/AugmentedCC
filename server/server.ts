@@ -499,10 +499,24 @@ async function main(): Promise<void> {
     }
   });
 
-  // Voice debug WebSocket connections
+  // Voice debug WebSocket connections (bidirectional: receives events + accepts simulated text)
   voiceWss.on("connection", (ws: WebSocket) => {
     console.log("[voice] Debug consumer connected");
     voiceConsumers.add(ws);
+
+    ws.on("message", async (data) => {
+      if (!voicePipeline) return;
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === "simulate" && typeof msg.text === "string") {
+          console.log(`[voice] Simulated text input: "${msg.text}"`);
+          await voicePipeline.processText(msg.text);
+        }
+      } catch (err) {
+        console.error("[voice] Failed to process simulated text:", err);
+      }
+    });
+
     ws.on("close", () => {
       voiceConsumers.delete(ws);
     });
