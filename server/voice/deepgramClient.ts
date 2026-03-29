@@ -2,7 +2,7 @@
  * Deepgram Flux streaming speech-to-text client.
  *
  * Uses @deepgram/sdk v5 listen.v2 (Flux) for turn-based transcription.
- * - Connects via SDK's listen.v2.createConnection()
+ * - Connects via SDK's listen.v2.connect()
  * - Accepts raw PCM audio chunks via sendAudio()
  * - Emits transcripts based on Flux turn events
  * - Auto-reconnects on disconnect
@@ -75,18 +75,21 @@ export class DeepgramClient {
     this.connecting = true;
 
     try {
-      const socket = await this.dgClient.listen.v2.createConnection({
+      const socket = await this.dgClient.listen.v2.connect({
         model: "flux-general-en",
         eot_threshold: 0.7,
         eot_timeout_ms: 5000,
         encoding: "linear16",
         sample_rate: 16000,
+        Authorization: `Token ${this.config.apiKey}`,
       });
+
+      const connectStartTime = Date.now();
 
       socket.on("open", () => {
         this.connected = true;
         this.reconnectAttempts = 0;
-        console.log("[deepgram] connected (Flux)");
+        console.log(`[deepgram-timing] connected (Flux) in ${Date.now() - connectStartTime}ms`);
       });
 
       socket.on("message", (data: FluxMessage) => {
@@ -119,8 +122,19 @@ export class DeepgramClient {
     }
   }
 
+  private audioChunkCount = 0;
+  private firstAudioSentTime = 0;
+
   sendAudio(audio: Buffer): void {
     if (this.connected && this.socket) {
+      this.audioChunkCount++;
+      if (this.audioChunkCount === 1) {
+        this.firstAudioSentTime = Date.now();
+        console.log(`[deepgram-timing] first audio chunk sent to Deepgram t=${this.firstAudioSentTime}`);
+      }
+      if (this.audioChunkCount <= 5 || this.audioChunkCount % 100 === 0) {
+        console.log(`[deepgram-timing] sendAudio #${this.audioChunkCount} +${Date.now() - this.firstAudioSentTime}ms`);
+      }
       this.socket.sendMedia(audio);
     }
   }
@@ -166,18 +180,21 @@ export class DeepgramClient {
 
     const turn = data as FluxTurnInfo;
 
+    const now = Date.now();
+    const sinceFirstAudio = this.firstAudioSentTime > 0 ? `+${now - this.firstAudioSentTime}ms` : "no-audio-yet";
+
     if (turn.event === "StartOfTurn") {
-      console.log(`[deepgram] StartOfTurn (turn ${turn.turn_index})`);
+      console.log(`[deepgram-timing] StartOfTurn (turn ${turn.turn_index}) t=${now} ${sinceFirstAudio}`);
     }
 
     if (turn.transcript) {
       const isFinal = turn.event === "EndOfTurn" || turn.event === "EagerEndOfTurn";
-      console.log(`[deepgram] ${turn.event}: "${turn.transcript}"`);
+      console.log(`[deepgram-timing] ${turn.event}: "${turn.transcript}" t=${now} ${sinceFirstAudio}`);
       this.config.onTranscript(turn.transcript, isFinal);
     }
 
     if (turn.event === "EndOfTurn") {
-      console.log(`[deepgram] EndOfTurn (turn ${turn.turn_index}, confidence=${turn.end_of_turn_confidence})`);
+      console.log(`[deepgram-timing] EndOfTurn (turn ${turn.turn_index}, confidence=${turn.end_of_turn_confidence}) t=${now} ${sinceFirstAudio}`);
     }
   }
 }
