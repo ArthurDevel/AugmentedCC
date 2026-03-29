@@ -57,6 +57,18 @@ function generateId(): string {
   return `panel-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+const KEY_MAP: Record<string, string> = {
+  enter: "\r",
+  up: "\x1b[A",
+  down: "\x1b[B",
+  left: "\x1b[D",
+  right: "\x1b[C",
+  tab: "\t",
+  escape: "\x1b",
+  backspace: "\x7f",
+  space: " ",
+};
+
 // PAGE
 // ============================================================================
 
@@ -123,11 +135,19 @@ export default function DesktopPage() {
       closeFocusedWindow();
     } else if (
       (tool === "run_command" && typeof params.command === "string") ||
-      (tool === "ask_claude" && typeof params.prompt === "string")
+      (tool === "ask_claude" && typeof params.prompt === "string") ||
+      (tool === "send_key" && typeof params.key === "string")
     ) {
-      const text = tool === "run_command"
-        ? (params.command as string)
-        : (params.prompt as string);
+      let data: string;
+      if (tool === "send_key") {
+        const keyName = (params.key as string).toLowerCase();
+        data = KEY_MAP[keyName] ?? keyName;
+      } else {
+        const text = tool === "run_command"
+          ? (params.command as string)
+          : (params.prompt as string);
+        data = text + "\r";
+      }
 
       const focusedPane = focusedWindowId
         ? terminalPanes.find((p) => p.id === focusedWindowId && p.terminalId)
@@ -142,7 +162,7 @@ export default function DesktopPage() {
       const res = await fetch(`/api/terminals/${targetPane.terminalId}/write`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: text + "\r" }),
+        body: JSON.stringify({ data }),
       });
       if (!res.ok) {
         console.error(`[tool] ${tool}: write failed (${res.status})`);
