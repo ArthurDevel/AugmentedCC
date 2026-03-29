@@ -37,7 +37,8 @@ interface Panel {
 
 interface TerminalPaneDescriptor {
   id: string;
-  terminalId: string;
+  terminalId: string | null;
+  profile: "shell" | "claude";
 }
 
 interface VoiceDebugEntry {
@@ -192,20 +193,33 @@ export default function DesktopPage() {
     setPanels((prev) => prev.map((p) => (p.id === id ? { ...p, url } : p)));
   }, []);
 
-  const addShell = useCallback(async () => {
+  const addTerminal = useCallback((profile: "shell" | "claude") => {
+    setTerminalPanes((prev) => [...prev, { id: generateId(), terminalId: null, profile }]);
+  }, []);
+
+  const launchTerminal = useCallback(async (paneId: string, cwd: string) => {
+    const pane = terminalPanes.find((p) => p.id === paneId);
+    if (!pane) return;
     const res = await fetch("/api/terminals", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profile: "shell" }),
+      body: JSON.stringify({ profile: pane.profile, cwd: cwd || undefined }),
     });
     if (!res.ok) throw new Error(`Failed to create terminal: ${res.status}`);
     const { id: terminalId } = (await res.json()) as { id: string };
-    setTerminalPanes((prev) => [...prev, { id: generateId(), terminalId }]);
-  }, []);
+    setTerminalPanes((prev) =>
+      prev.map((p) => (p.id === paneId ? { ...p, terminalId } : p)),
+    );
+  }, [terminalPanes]);
 
-  const removeTerminal = useCallback(async (paneId: string, terminalId: string) => {
+  const addShell = useCallback(() => addTerminal("shell"), [addTerminal]);
+  const addClaude = useCallback(() => addTerminal("claude"), [addTerminal]);
+
+  const removeTerminal = useCallback(async (paneId: string, terminalId: string | null) => {
     setTerminalPanes((prev) => prev.filter((p) => p.id !== paneId));
-    await fetch(`/api/terminals/${terminalId}`, { method: "DELETE" });
+    if (terminalId) {
+      await fetch(`/api/terminals/${terminalId}`, { method: "DELETE" });
+    }
   }, []);
 
   const totalCount = panels.length + terminalPanes.length;
@@ -216,6 +230,7 @@ export default function DesktopPage() {
         onAdd={addPanel}
         onRemoveLast={removeLast}
         onAddShell={addShell}
+        onAddClaude={addClaude}
         panelCount={panels.length}
       />
 
@@ -232,6 +247,7 @@ export default function DesktopPage() {
           <TerminalPane
             key={pane.id}
             pane={pane}
+            onLaunch={(cwd) => launchTerminal(pane.id, cwd)}
             onClose={() => removeTerminal(pane.id, pane.terminalId)}
           />
         ))}
@@ -251,11 +267,13 @@ function Toolbar({
   onAdd,
   onRemoveLast,
   onAddShell,
+  onAddClaude,
   panelCount,
 }: {
   onAdd: () => void;
   onRemoveLast: () => void;
   onAddShell: () => void;
+  onAddClaude: () => void;
   panelCount: number;
 }) {
   return (
@@ -267,6 +285,7 @@ function Toolbar({
         - Remove Panel
       </button>
       <button onClick={onAddShell}>+ Shell</button>
+      <button onClick={onAddClaude}>+ Claude</button>
       <span className="panel-count">
         {panelCount} / {MAX_PANELS}
       </span>
@@ -334,7 +353,80 @@ function IframePanel({
 // TERMINAL PANE
 // ============================================================================
 
-const TerminalPane = ({ pane, onClose }: { pane: TerminalPaneDescriptor; onClose: () => void }) => {
+const TerminalPane = ({
+  pane,
+  onLaunch,
+  onClose,
+}: {
+  pane: TerminalPaneDescriptor;
+  onLaunch: (cwd: string) => void;
+  onClose: () => void;
+}) => {
+  const label = pane.profile === "claude" ? "Claude" : "Shell";
+
+  if (!pane.terminalId) {
+    return (
+      <div className="iframe-panel">
+        <div className="panel-header">
+          <span className="panel-url">New {label}</span>
+          <button className="panel-close" onClick={onClose}>
+            x
+          </button>
+        </div>
+        <TerminalPathEntry label={label} onSubmit={onLaunch} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="iframe-panel">
+      <div className="panel-header">
+        <span className="panel-url">{label}</span>
+        <button className="panel-close" onClick={onClose}>
+          x
+        </button>
+      </div>
+      <TerminalXterm terminalId={pane.terminalId} />
+    </div>
+  );
+};
+
+function TerminalPathEntry({
+  label,
+  onSubmit,
+}: {
+  label: string;
+  onSubmit: (cwd: string) => void;
+}) {
+  const [pathInput, setPathInput] = useState("");
+
+  const handleSubmit = () => {
+    onSubmit(pathInput.trim());
+  };
+
+  return (
+    <div className="panel-url-entry">
+      <div className="panel-url-row">
+        <input
+          type="text"
+          className="panel-url-input"
+          placeholder="Working directory (blank for default)…"
+          value={pathInput}
+          onChange={(e) => setPathInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSubmit();
+          }}
+          autoFocus
+        />
+        <button className="panel-url-go" onClick={handleSubmit}>
+          {label}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const TerminalXterm = ({ terminalId }: { terminalId: string }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -396,18 +488,17 @@ const TerminalPane = ({ pane, onClose }: { pane: TerminalPaneDescriptor; onClose
         fitAddon.fit();
       };
       refit();
-      // Flex layout may not have settled on first paint; refit after layout.
       requestAnimationFrame(() => {
         requestAnimationFrame(refit);
       });
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const ws = new WebSocket(
-        `${protocol}//${window.location.host}/ws/terminal/${pane.terminalId}`,
+        `${protocol}//${window.location.host}/ws/terminal/${terminalId}`,
       );
 
       ws.onopen = () => {
-        fetch(`/api/terminals/${pane.terminalId}/resize`, {
+        fetch(`/api/terminals/${terminalId}/resize`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ cols: terminal.cols, rows: terminal.rows }),
@@ -437,7 +528,7 @@ const TerminalPane = ({ pane, onClose }: { pane: TerminalPaneDescriptor; onClose
           if (disposed) return;
           fitAddon.fit();
           if (ws.readyState === WebSocket.OPEN) {
-            fetch(`/api/terminals/${pane.terminalId}/resize`, {
+            fetch(`/api/terminals/${terminalId}/resize`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ cols: terminal.cols, rows: terminal.rows }),
@@ -461,19 +552,9 @@ const TerminalPane = ({ pane, onClose }: { pane: TerminalPaneDescriptor; onClose
       disposed = true;
       cleanup?.();
     };
-  }, [pane.terminalId]);
+  }, [terminalId]);
 
-  return (
-    <div className="iframe-panel">
-      <div className="panel-header">
-        <span className="panel-url">Shell</span>
-        <button className="panel-close" onClick={onClose}>
-          x
-        </button>
-      </div>
-      <div ref={containerRef} className="panel-terminal" />
-    </div>
-  );
+  return <div ref={containerRef} className="panel-terminal" />;
 };
 
 // ============================================================================
