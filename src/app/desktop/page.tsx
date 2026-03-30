@@ -423,6 +423,7 @@ export default function DesktopPage() {
         <button className="bottom-control-button" onClick={addShell}>+ Shell</button>
         <button className="bottom-control-button" onClick={addClaude}>+ Claude</button>
         <button className="bottom-control-button" onClick={resumeSessions}>Resume Sessions</button>
+        <button className="bottom-control-button" onClick={() => sendKeyToFocusedTerminal("\x1b")} title="Escape">Esc</button>
         <button className="bottom-control-button" onClick={() => sendKeyToFocusedTerminal("\x1b[A")} title="Arrow Up">↑</button>
         <button className="bottom-control-button" onClick={() => sendKeyToFocusedTerminal("\x1b[B")} title="Arrow Down">↓</button>
         <button className="bottom-control-button" onClick={() => sendKeyToFocusedTerminal("\r")} title="Enter">⏎</button>
